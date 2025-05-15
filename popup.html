@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CRM Feed</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="theme-light">
+  <div id="sidebar">
+    <header>
+      <!-- Header line with title + Mark All Read + Refresh -->
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <h1 style="margin:0;">📥 Capsule Feed</h1>
+        <div style="display:flex; gap:8px;">
+          <!-- Mark All as Read -->
+          <button id="markAllReadBtn" title="Mark all as read" class="icon-btn"
+                  style="background:none;border:none;font-size:18px;cursor:pointer;">✓</button>
+          <!-- Manual Refresh -->
+          <button id="refreshBtn" title="Refresh Now" class="icon-btn"
+                  style="background:none;border:none;font-size:18px;cursor:pointer;">🔄</button>
+        </div>
+      </div>
+
+      <!-- Search / settings / theme controls -->
+      <div id="controls">
+        <input id="searchInput" type="text" placeholder="Search...">
+        <button id="settingsBtn">⚙️</button>
+        <button id="themeToggle">🌓</button>
+      </div>
+
+      <!-- Tabs -->
+      <nav>
+        <button class="tab active" data-tab="recent">Recent</button>
+        <button class="tab" data-tab="saved">Saved</button>
+        <button class="tab" data-tab="history">History</button>
+      </nav>
+    </header>
+
+    <section id="feedList">
+      <p class="empty">Loading posts...</p>
+    </section>
+
+    <template id="postTemplate">
+      <div class="post">
+        <div class="title-container">
+          <!-- Note target="_blank" & rel for safety -->
+          <a class="post-title" href="#" target="_blank" rel="noopener noreferrer"></a>
+          <span class="post-time"></span>
+        </div>
+        <!-- NEW: Author & snippet -->
+        <div class="post-meta">
+          <small class="post-author"></small>
+          <p class="post-snippet"></p>
+        </div>
+        <div class="post-actions">
+          <button class="mark-read">✓</button>
+          <button class="mark-unread">👁</button>
+          <button class="delete">🗑</button>
+          <button class="save">📌</button>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <audio id="ding" src="ding.mp3" preload="auto"></audio>
+  <script src="popup.js"></script>
+</body>
+</html>

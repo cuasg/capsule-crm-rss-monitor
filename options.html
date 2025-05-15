@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Settings - CRM RSS Monitor</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="theme-light">
+  <div id="settingsPage" style="padding:20px;">
+    <h1>⚙️ Settings</h1>
+
+    <section>
+      <label for="capsuleToken">Capsule API Token</label>
+      <input id="capsuleToken" type="password" placeholder="Paste your token here" style="width: 100%; margin-bottom: 10px;" />
+
+      <label for="feedInput">Add RSS Feed URL</label>
+      <div class="input-row">
+        <input id="feedInput" type="text" placeholder="https://example.com/feed.xml" style="width:80%;" />
+        <button id="addFeedBtn">Add</button>
+      </div>
+      <ul id="feedListUI"></ul>
+    </section>
+
+    <section>
+      <label for="intervalSelect">Check Interval (minutes)</label>
+      <select id="intervalSelect">
+        <option value="1">Every 1 minute</option>
+        <option value="2">Every 2 minutes</option>
+        <option value="5">Every 5 minutes</option>
+        <option value="10">Every 10 minutes</option>
+        <option value="15">Every 15 minutes</option>
+        <option value="30">Every 30 minutes</option>
+        <option value="60">Every 60 minutes</option>
+      </select>
+    </section>
+
+    <section>
+      <label><input type="checkbox" id="notifyToggle" /> Enable Notifications</label><br/>
+      <label><input type="checkbox" id="soundToggle" /> Enable Sound Alert</label>
+    </section>
+
+    <section>
+      <label for="snoozeSelect">Snooze Notifications</label>
+      <select id="snoozeSelect">
+        <option value="0">None</option>
+        <option value="15">15 minutes</option>
+        <option value="30">30 minutes</option>
+        <option value="60">1 hour</option>
+        <option value="120">2 hours</option>
+      </select>
+    </section>
+
+    <section>
+      <button id="exportJson">Export to JSON</button>
+      <button id="exportCsv">Export to CSV</button>
+    </section>
+
+    <button id="saveBtn" style="margin-top:12px;">Save Settings</button>
+    <p id="saveStatus"></p>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>
