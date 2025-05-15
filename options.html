@@ -5,58 +5,172 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Settings - CRM RSS Monitor</title>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Options Page Specific Styles */
+    #settingsPage {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+      font-family: sans-serif;
+      color: var(--text-color);
+    }
+    #settingsPage h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .option-group {
+      margin-bottom: 1.5rem;
+      padding: 1rem;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: var(--panel-bg);
+    }
+    .option-group legend {
+      font-weight: bold;
+      padding: 0 4px;
+    }
+    .option-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .option-row label {
+      flex: 0 0 140px;
+    }
+    .option-row input[type="text"],
+    .option-row input[type="password"],
+    .option-row select {
+      flex: 1;
+      padding: 6px 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: var(--input-bg);
+      color: var(--input-color);
+    }
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+    .input-row input {
+      flex: 1;
+    }
+    .feed-list {
+      list-style: none;
+      padding: 0;
+      margin: 0.5rem 0 0;
+    }
+    .feed-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .feed-list li button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      color: var(--muted-text);
+    }
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: var(--primary-color);
+      color: white;
+      font-size: 0.95rem;
+      margin-right: 8px;
+    }
+    #saveBtn {
+      width: 100%;
+    }
+    #saveStatus {
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      color: var(--muted-text);
+    }
+  </style>
 </head>
 <body class="theme-light">
-  <div id="settingsPage" style="padding:20px;">
+  <div id="settingsPage">
     <h1>⚙️ Settings</h1>
 
-    <section>
-      <label for="capsuleToken">Capsule API Token</label>
-      <input id="capsuleToken" type="password" placeholder="Paste your token here" style="width: 100%; margin-bottom: 10px;" />
-
-      <label for="feedInput">Add RSS Feed URL</label>
-      <div class="input-row">
-        <input id="feedInput" type="text" placeholder="https://example.com/feed.xml" style="width:80%;" />
-        <button id="addFeedBtn">Add</button>
+    <fieldset class="option-group">
+      <legend>API & Feeds</legend>
+      <div class="option-row">
+        <label for="capsuleToken">Capsule API Token</label>
+        <input id="capsuleToken" type="password" placeholder="Paste your token here" />
       </div>
-      <ul id="feedListUI"></ul>
-    </section>
+      <div class="option-row">
+        <label for="feedInput">RSS Feed URL</label>
+        <div class="input-row">
+          <input id="feedInput" type="text" placeholder="https://example.com/feed.xml" />
+          <button id="addFeedBtn" class="btn">Add</button>
+        </div>
+      </div>
+      <ul id="feedListUI" class="feed-list"></ul>
+    </fieldset>
 
-    <section>
-      <label for="intervalSelect">Check Interval (minutes)</label>
-      <select id="intervalSelect">
-        <option value="1">Every 1 minute</option>
-        <option value="2">Every 2 minutes</option>
-        <option value="5">Every 5 minutes</option>
-        <option value="10">Every 10 minutes</option>
-        <option value="15">Every 15 minutes</option>
-        <option value="30">Every 30 minutes</option>
-        <option value="60">Every 60 minutes</option>
-      </select>
-    </section>
+    <fieldset class="option-group">
+      <legend>Polling & Alerts</legend>
+      <div class="option-row">
+        <label for="intervalSelect">Check Interval</label>
+        <select id="intervalSelect">
+          <option value="1">Every 1 minute</option>
+          <option value="2">Every 2 minutes</option>
+          <option value="5">Every 5 minutes</option>
+          <option value="10">Every 10 minutes</option>
+          <option value="15">Every 15 minutes</option>
+          <option value="30">Every 30 minutes</option>
+          <option value="60">Every 60 minutes</option>
+        </select>
+      </div>
+      <div class="option-row">
+        <label></label>
+        <label><input type="checkbox" id="notifyToggle" /> Enable Notifications</label>
+      </div>
+      <div class="option-row">
+        <label></label>
+        <label><input type="checkbox" id="soundToggle" /> Enable Sound Alert</label>
+      </div>
+      <div class="option-row">
+        <label for="snoozeSelect">Snooze Notifications</label>
+        <select id="snoozeSelect">
+          <option value="0">None</option>
+          <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="60">1 hour</option>
+          <option value="120">2 hours</option>
+        </select>
+      </div>
+    </fieldset>
 
-    <section>
-      <label><input type="checkbox" id="notifyToggle" /> Enable Notifications</label><br/>
-      <label><input type="checkbox" id="soundToggle" /> Enable Sound Alert</label>
-    </section>
+    <fieldset class="option-group">
+      <legend>AI Summaries</legend>
+      <div class="option-row">
+        <label for="openaiKey">OpenAI API Key</label>
+        <input id="openaiKey" type="password" placeholder="sk-..." autocomplete="off" />
+      </div>
+      <div class="option-row">
+        <label></label>
+        <label><input type="checkbox" id="enableSummaries" /> Enable AI Summaries</label>
+      </div>
+    </fieldset>
 
-    <section>
-      <label for="snoozeSelect">Snooze Notifications</label>
-      <select id="snoozeSelect">
-        <option value="0">None</option>
-        <option value="15">15 minutes</option>
-        <option value="30">30 minutes</option>
-        <option value="60">1 hour</option>
-        <option value="120">2 hours</option>
-      </select>
-    </section>
+    <fieldset class="option-group">
+      <legend>Export</legend>
+      <div class="option-row">
+        <button id="exportJson" class="btn">Export to JSON</button>
+        <button id="exportCsv" class="btn">Export to CSV</button>
+      </div>
+    </fieldset>
 
-    <section>
-      <button id="exportJson">Export to JSON</button>
-      <button id="exportCsv">Export to CSV</button>
-    </section>
-
-    <button id="saveBtn" style="margin-top:12px;">Save Settings</button>
+    <button id="saveBtn" class="btn">Save Settings</button>
     <p id="saveStatus"></p>
   </div>
   <script src="options.js"></script>

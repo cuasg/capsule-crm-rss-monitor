@@ -18,7 +18,7 @@ chrome.notifications.onClicked.addListener(notificationId => {
   });
 });
 
-// Fetch entries from Capsule API, include author & snippet
+// Fetch entries from Capsule API, include author & snippet + full body
 async function fetchCapsuleEntries(token) {
   const res = await fetch("https://api.capsulecrm.com/api/v2/entries", {
     headers: {
@@ -44,9 +44,60 @@ async function fetchCapsuleEntries(token) {
       link,
       guid:    entry.id.toString(),
       author:  entry.creator?.name || "",
-      snippet
+      snippet,
+      body:    full
     };
   });
+}
+
+// Batch‑summarize new entries via OpenAI, cleaning markdown fences
+async function summarizeBatch(items) {
+  const { openaiKey, enableSummaries } = await chrome.storage.local.get(
+    ['openaiKey','enableSummaries']
+  );
+  if (!enableSummaries || !openaiKey) return {};
+
+  const entriesPayload = items.map(i => ({ guid: i.guid, body: i.body }));
+  const systemMsg = {
+    role: 'system',
+    content: 'You are an assistant that produces concise summaries of CRM entries.'
+  };
+  const userMsg = {
+    role: 'user',
+    content: `Summarize each of these entries in 20–30 words.\nOutput a JSON array of objects with fields "guid" and "summary":\n\n${JSON.stringify(entriesPayload)}`
+  };
+
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${openaiKey}`
+    },
+    body: JSON.stringify({
+      model:       'gpt-3.5-turbo',
+      messages:    [systemMsg, userMsg],
+      max_tokens:  items.length * 60,
+      temperature: 0.5
+    })
+  });
+  const { choices } = await resp.json();
+
+  let text = choices?.[0]?.message?.content || '';
+  // strip triple-backtick fences if present
+  text = text.trim().replace(/^```(?:json)?\n?/, '').replace(/```$/, '').trim();
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    console.error('AI summary parse error', e, '\nResponse:', text);
+    return {};
+  }
+
+  return parsed.reduce((map, { guid, summary }) => {
+    map[guid] = summary;
+    return map;
+  }, {});
 }
 
 // Recompute and update the badge based on unread “Recent” (max 10)
@@ -64,46 +115,53 @@ function updateBadgeFromStorage() {
   });
 }
 
-// Process new entries and store them
+// Process new entries, summarize, store, notify, and play sound
 async function checkFeed(_, notificationsEnabled, soundEnabled, capsuleToken) {
   try {
-    console.log("[DEBUG] Fetching from Capsule API with token...");
+    console.log("[DEBUG] Fetching from Capsule API…");
     const entries = await fetchCapsuleEntries(capsuleToken);
     console.log("[DEBUG] Entries received:", entries.length);
 
-    entries.forEach(item => {
+    const newItems = entries.filter(item => {
       if (!seenGuids.has(item.guid)) {
         seenGuids.add(item.guid);
+        return true;
+      }
+      return false;
+    });
 
-        // Store new item, cap list at 100
-        chrome.storage.local.get("rssItems", data => {
-          const existing = Array.isArray(data.rssItems) ? data.rssItems : [];
-          const updated  = [item, ...existing].slice(0, 100);
-          chrome.storage.local.set({ rssItems: updated }, updateBadgeFromStorage);
-        });
+    if (newItems.length) {
+      const summaryMap = await summarizeBatch(newItems);
+      newItems.forEach(item => {
+        item.summary = summaryMap[item.guid] || item.snippet;
+      });
 
-        // Notification (single global onClicked above)
+      chrome.storage.local.get("rssItems", data => {
+        const existing = Array.isArray(data.rssItems) ? data.rssItems : [];
+        const updated  = [...newItems, ...existing].slice(0, 100);
+        chrome.storage.local.set({ rssItems: updated }, updateBadgeFromStorage);
+      });
+
+      newItems.forEach(item => {
         if (notificationsEnabled) {
           chrome.notifications.create(
             item.guid,
             {
-              type:     "basic",
-              iconUrl:  "icons/icon128.png",
-              title:    "New CRM Activity",
-              message:  item.title,
-              priority: 1
-            },
-            () => {}
+              type:           "basic",
+              iconUrl:        "icons/icon128.png",
+              title:          item.title,
+              message:        item.summary,
+              contextMessage: `By ${item.author}`,
+              priority:       1
+            }
           );
         }
-
-        // Sound
         if (soundEnabled && typeof Audio !== "undefined") {
           const audio = new Audio(chrome.runtime.getURL("ding.mp3"));
           audio.play();
         }
-      }
-    });
+      });
+    }
   } catch (err) {
     console.error("[ERROR] Capsule API fetch failed:", err);
   }

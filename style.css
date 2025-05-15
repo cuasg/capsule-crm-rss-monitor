@@ -169,3 +169,161 @@ body.theme-dark .post {
 .post.saved {
   border-left: 4px solid #0078d4;
 }
+
+/* Global resets */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* CSS Variables for theming */
+:root {
+  --background-color: #f4f4f4;
+  --text-color: #111;
+  --input-bg: #fff;
+  --input-color: #111;
+  --border-color: #ccc;
+  --panel-bg: #fff;
+  --primary-color: #0078d4;
+  --primary-hover: #005a9e;
+  --muted-text: #666;
+  --accent-color: #0078d4;
+}
+
+body.theme-dark {
+  --background-color: #1e1e1e;
+  --text-color: #f4f4f4;
+  --input-bg: #2a2a2a;
+  --input-color: #f4f4f4;
+  --border-color: #444;
+  --panel-bg: #2a2a2a;
+  --primary-color: #0a84ff;
+  --primary-hover: #006fcf;
+  --muted-text: #aaa;
+  --accent-color: #0a84ff;
+}
+
+/* Body and layout */
+body {
+  font-family: "Segoe UI", sans-serif;
+  background: var(--background-color);
+  color: var(--text-color);
+  transition: background 0.3s, color 0.3s;
+}
+
+/* Options Page Container */
+#settingsPage {
+  max-width: 600px;
+  margin: 16px auto;
+  padding: 20px;
+}
+
+/* Fieldsets as panels */
+.option-group {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+.option-group legend {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-left: 8px;
+}
+
+/* Labels and inputs alignment */
+.option-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.option-row label {
+  flex: 0 0 140px;
+  color: var(--text-color);
+  font-size: 0.95rem;
+}
+.option-row input[type="text"],
+.option-row input[type="password"],
+.option-row select {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--input-color);
+  font-size: 0.95rem;
+}
+
+/* Feed URL list */
+.feed-list {
+  list-style: none;
+  margin-top: 8px;
+}
+.feed-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-color);
+  font-size: 0.9rem;
+}
+.feed-list li button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted-text);
+  font-size: 1rem;
+}
+
+/* Buttons */
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+.btn-primary {
+  background: var(--primary-color);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+.btn-export {
+  background: transparent;
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+.btn-export:hover {
+  background: var(--accent-color);
+  color: #fff;
+}
+
+/* Save status text */
+#saveStatus {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  color: var(--muted-text);
+}
+
+/* Ensure panels are full width */
+.option-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Prevent input overflow on long values */
+.option-row input,
+.option-row select {
+  min-width: 0;
+}
+

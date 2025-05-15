@@ -12,6 +12,8 @@ const exportJsonBtn = document.getElementById("exportJson");
 const exportCsvBtn = document.getElementById("exportCsv");
 const saveBtn = document.getElementById("saveBtn");
 const saveStatus = document.getElementById("saveStatus");
+const keyInput        = document.getElementById('openaiKey');
+const summariesToggle = document.getElementById('enableSummaries');
 
 let feeds = [];
 
@@ -69,6 +71,24 @@ chrome.storage.local.get(["feeds", "capsuleToken", "interval", "notificationsEna
   notifyToggle.checked = data.notificationsEnabled !== false;
   soundToggle.checked = data.soundEnabled !== false;
   updateFeedList();
+});
+
+// Restore saved values
+chrome.storage.local.get(
+  ['openaiKey','enableSummaries'],
+  ({ openaiKey = '', enableSummaries = false }) => {
+    keyInput.value = openaiKey;
+    summariesToggle.checked = enableSummaries;
+  }
+);
+
+// Save whenever they change
+keyInput.addEventListener('input', () => {
+  chrome.storage.local.set({ openaiKey: keyInput.value });
+});
+
+summariesToggle.addEventListener('change', () => {
+  chrome.storage.local.set({ enableSummaries: summariesToggle.checked });
 });
 
 exportJsonBtn.addEventListener("click", () => {

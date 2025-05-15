@@ -18,6 +18,7 @@ function toggleTheme() {
 }
 
 // Fetch posts from storage, sort once, then render
+enableManualRefresh = true;
 function loadPosts() {
   chrome.storage.local.get("rssItems", data => {
     posts = Array.isArray(data.rssItems) ? data.rssItems : [];
@@ -64,23 +65,22 @@ function renderPosts(tab) {
     link.rel         = "noopener noreferrer";
 
     // when clicked, mark this post as read before following link
-    link.addEventListener("click", (e) => {
+    link.addEventListener("click", () => {
       updatePost(post.guid, { read: true });
-      // default behavior then opens the link in a new tab
     });
 
     // Date
     time.textContent = new Date(post.date).toLocaleString();
 
-    // Author & snippet
+    // Author & AI summary (fallback to snippet)
     authorEl.textContent  = post.author ? `by ${post.author}` : "";
-    snippetEl.textContent = post.snippet || "";
+    snippetEl.textContent = post.summary || post.snippet || "";
 
     // Read/Saved styling
     if (post.read)   container.classList.add("read");
     if (post.saved)  container.classList.add("saved");
 
-    // Per‐post actions
+    // Per‑post actions
     clone.querySelector(".mark-read").onclick   = () => updatePost(post.guid, { read: true });
     clone.querySelector(".mark-unread").onclick = () => updatePost(post.guid, { read: false });
     clone.querySelector(".delete").onclick      = () => updatePost(post.guid, { deleted: true });
@@ -124,15 +124,16 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
+// DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
   loadTheme();
 
-  // On open, trigger a manual refresh then loadPosts when done
+  // On open, manual refresh then loadPosts
   chrome.runtime.sendMessage({ type: "manualRefresh" }, resp => {
-    if (resp && resp.ok) loadPosts();
+    if (resp?.ok) loadPosts();
   });
 
-  // Settings & theme buttons
+  // Settings & theme
   document.getElementById("settingsBtn").addEventListener("click", () =>
     chrome.runtime.openOptionsPage()
   );
@@ -146,11 +147,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // Refresh button
   document.getElementById("refreshBtn").addEventListener("click", () =>
     chrome.runtime.sendMessage({ type: "manualRefresh" }, resp => {
-      if (resp && resp.ok) loadPosts();
+      if (resp?.ok) loadPosts();
     })
   );
 
-  // Mark All Read button
+  // Mark All Read
   document.getElementById("markAllReadBtn").addEventListener("click", markAllRead);
 
   // Tab click handlers
