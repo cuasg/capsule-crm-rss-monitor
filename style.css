@@ -4,14 +4,6 @@
   padding: 0;
 }
 
-body {
-  font-family: "Segoe UI", sans-serif;
-  width: 360px;
-  height: 600px;
-  overflow: hidden;
-  transition: background 0.3s, color 0.3s;
-}
-
 body.theme-light {
   background-color: #f4f4f4;
   color: #111;
@@ -204,13 +196,18 @@ body.theme-dark {
   --accent-color: #0a84ff;
 }
 
+
 /* Body and layout */
 body {
   font-family: "Segoe UI", sans-serif;
+  width: 360px;
+  height: 800px;
+  overflow: hidden;
   background: var(--background-color);
   color: var(--text-color);
   transition: background 0.3s, color 0.3s;
 }
+
 
 /* Options Page Container */
 #settingsPage {
@@ -326,4 +323,68 @@ body {
 .option-row select {
   min-width: 0;
 }
+
+/* Fill the entire side‑panel height */
+html, body {
+  height: 100%;
+  margin: 0;
+}
+#sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Header */
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.header-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.header-actions button {
+  /* keep the same size */
+  width: 32px;
+  height: 32px;
+  margin-left: 4px;
+}
+
+/* Icon buttons */
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+/* Make the list area grow to fill space */
+#feedList {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+/* only when undocked (action popup), allow it to grow & scroll */
+body.undocked {
+  font-family: "Segoe UI", sans-serif;
+  width: 360px;
+  height: 600px;
+  overflow: hidden;
+  background: var(--background-color);
+  color: var(--text-color);
+  transition: background 0.3s, color 0.3s;
+}
+
+
+
 

@@ -3,6 +3,16 @@
 let seenGuids = new Set();
 const DEFAULT_INTERVAL = 1;
 
+// Apply dock/undock side panel behavior based on stored setting
+async function applyDockSetting() {
+  const { enableDock = false } = await chrome.storage.local.get('enableDock');
+  try {
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: enableDock });
+  } catch (e) {
+    console.warn('[WARN] sidePanel.setPanelBehavior failed', e);
+  }
+}
+
 // 1) On load, seed seenGuids so we don’t re‑notify existing items
 chrome.storage.local.get("rssItems", data => {
   (data.rssItems || []).forEach(item => seenGuids.add(item.guid));
@@ -200,8 +210,9 @@ async function getSettings() {
   });
 }
 
-// On install: initial load & scheduling
+// On install: initial load, apply dock, & scheduling
 chrome.runtime.onInstalled.addListener(async () => {
+  await applyDockSetting();
   const { feeds, capsuleToken } = await getSettings();
   feeds.forEach(url =>
     checkFeed(url, false, false, capsuleToken)
@@ -209,8 +220,9 @@ chrome.runtime.onInstalled.addListener(async () => {
   scheduleAlarm(DEFAULT_INTERVAL);
 });
 
-// On startup: schedule only
+// On startup: apply dock & schedule only
 chrome.runtime.onStartup.addListener(async () => {
+  await applyDockSetting();
   const { interval } = await getSettings();
   scheduleAlarm(interval);
 });
@@ -229,7 +241,7 @@ chrome.alarms.onAlarm.addListener(async alarm => {
 // Manual refresh from popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "manualRefresh") {
-    getSettings().then(({ feeds, notificationsEnabled, soundEnabled, capsuleToken }) => {
+    getSettings().then(async ({ feeds, notificationsEnabled, soundEnabled, capsuleToken }) => {
       feeds.forEach(url =>
         checkFeed(url, notificationsEnabled, soundEnabled, capsuleToken)
       );
@@ -239,12 +251,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// Recompute badge when storage changes
+// Recompute badge and dock on storage changes
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.rssItems) {
-    updateBadgeFromStorage();
+  if (area === "local") {
+    if (changes.rssItems) updateBadgeFromStorage();
+    if (changes.enableDock) applyDockSetting();
   }
 });
 
-// Initial badge computation
+// Initial badge & dock computation
 updateBadgeFromStorage();
+applyDockSetting();

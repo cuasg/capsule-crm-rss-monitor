@@ -10,23 +10,20 @@
   <div id="sidebar">
     <header>
       <!-- Header line with title + Mark All Read + Refresh -->
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-        <h1 style="margin:0;">📥 Capsule Feed</h1>
-        <div style="display:flex; gap:8px;">
-          <!-- Mark All as Read -->
-          <button id="markAllReadBtn" title="Mark all as read" class="icon-btn"
-                  style="background:none;border:none;font-size:18px;cursor:pointer;">✓</button>
-          <!-- Manual Refresh -->
-          <button id="refreshBtn" title="Refresh Now" class="icon-btn"
-                  style="background:none;border:none;font-size:18px;cursor:pointer;">🔄</button>
+      <div class="header-top">
+        <h1 class="header-title">📥 Capsule Feed</h1>
+        <div class="header-actions">
+          <button id="markAllReadBtn" title="Mark all as read" class="icon-btn">✓</button>
+          <button id="refreshBtn" title="Refresh Now" class="icon-btn">🔄</button>
         </div>
       </div>
 
-      <!-- Search / settings / theme controls -->
+      <!-- Search / settings / theme / dock controls -->
       <div id="controls">
         <input id="searchInput" type="text" placeholder="Search...">
-        <button id="settingsBtn">⚙️</button>
-        <button id="themeToggle">🌓</button>
+        <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
+        <button id="themeToggle" class="icon-btn" title="Toggle theme">🌓</button>
+        <button id="dockToggleBtn" class="icon-btn" title="Dock/Undock panel">⇱</button>
       </div>
 
       <!-- Tabs -->
@@ -44,11 +41,9 @@
     <template id="postTemplate">
       <div class="post">
         <div class="title-container">
-          <!-- Note target="_blank" & rel for safety -->
           <a class="post-title" href="#" target="_blank" rel="noopener noreferrer"></a>
           <span class="post-time"></span>
         </div>
-        <!-- NEW: Author & snippet -->
         <div class="post-meta">
           <small class="post-author"></small>
           <p class="post-snippet"></p>
