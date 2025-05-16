@@ -60,55 +60,103 @@ async function fetchCapsuleEntries(token) {
   });
 }
 
-// Batch‑summarize new entries via OpenAI, cleaning markdown fences
+// Batch-summarize new entries via OpenAI, with full request/response logging
 async function summarizeBatch(items) {
   const { openaiKey, enableSummaries } = await chrome.storage.local.get(
     ['openaiKey','enableSummaries']
   );
   if (!enableSummaries || !openaiKey) return {};
 
+  // Build payload
   const entriesPayload = items.map(i => ({ guid: i.guid, body: i.body }));
+  console.debug('[AI] entriesPayload →', entriesPayload);
+
   const systemMsg = {
     role: 'system',
     content: 'You are an assistant that produces concise summaries of CRM entries.'
   };
   const userMsg = {
     role: 'user',
-    content: `Summarize each of these entries in 20–30 words.\nOutput a JSON array of objects with fields "guid" and "summary":\n\n${JSON.stringify(entriesPayload)}`
+    content:
+      `Summarize each of these entries in 20–30 words.\n` +
+      `Output a JSON array of objects with fields "guid" and "summary":\n\n` +
+      JSON.stringify(entriesPayload)
   };
 
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${openaiKey}`
-    },
-    body: JSON.stringify({
-      model:       'gpt-3.5-turbo',
-      messages:    [systemMsg, userMsg],
-      max_tokens:  items.length * 60,
-      temperature: 0.5
-    })
-  });
-  const { choices } = await resp.json();
-
-  let text = choices?.[0]?.message?.content || '';
-  // strip triple-backtick fences if present
-  text = text.trim().replace(/^```(?:json)?\n?/, '').replace(/```$/, '').trim();
-
-  let parsed;
+  let text = '';
   try {
-    parsed = JSON.parse(text);
+    console.debug('[AI] Sending request to OpenAI…');
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${openaiKey}`
+      },
+      body: JSON.stringify({
+        model:       'gpt-3.5-turbo',
+        messages:    [systemMsg, userMsg],
+        max_tokens:  items.length * 60,
+        temperature: 0.5
+      })
+    });
+
+    if (!resp.ok) {
+      console.error('[AI] HTTP error', resp.status, resp.statusText);
+      return {};
+    }
+
+    // Grab the full JSON response
+    const data = await resp.json();
+    console.debug('[AI] full API response →', data);
+
+    // And the raw assistant content
+    text = data.choices?.[0]?.message?.content || '';
+    console.debug('[AI] raw assistant content →', text);
   } catch (e) {
-    console.error('AI summary parse error', e, '\nResponse:', text);
+    console.error('[AI] request failed', e);
     return {};
   }
 
+  if (!text.trim()) {
+    console.warn('[AI] empty assistant content');
+    return {};
+  }
+
+  // Strip only the opening/closing ``` markers
+  console.debug('[AI] before fence-strip →', text);
+  text = text
+    .replace(/^```(?:json)?\r?\n/, '') // remove leading ```json\n
+    .replace(/\r?\n```$/, '')          // remove trailing \n```
+    .trim();
+  console.debug('[AI] after fence-strip →', text);
+
+  // Extract JSON array
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) {
+    console.error('[AI] no JSON array found in assistant content', text);
+    return {};
+  }
+  text = match[0];
+  console.debug('[AI] JSON array extracted →', text);
+
+  // Parse
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) throw new Error('Not an array');
+  } catch (e) {
+    console.error('[AI] JSON.parse failed', e, '\nRaw JSON text:', text);
+    return {};
+  }
+
+  // Build map
   return parsed.reduce((map, { guid, summary }) => {
-    map[guid] = summary;
+    if (guid && summary) map[guid] = summary;
     return map;
   }, {});
 }
+
+
 
 // Recompute and update the badge based on unread “Recent” (max 10)
 function updateBadgeFromStorage() {

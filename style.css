@@ -218,12 +218,17 @@ body {
 
 /* Fieldsets as panels */
 .option-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
   margin-bottom: 20px;
   padding: 16px;
   background: var(--panel-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
 }
+
+/* Legend stays the same */
 .option-group legend {
   font-size: 1.1rem;
   font-weight: 600;
@@ -236,16 +241,22 @@ body {
   display: flex;
   align-items: center;
   margin-bottom: 12px;
+  /* allow contents to shrink rather than overflow */
+  min-width: 0;
 }
+
 .option-row label {
   flex: 0 0 140px;
   color: var(--text-color);
   font-size: 0.95rem;
 }
+
 .option-row input[type="text"],
 .option-row input[type="password"],
 .option-row select {
-  flex: 1;
+  /* let inputs grow but also shrink below their content width */
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 8px 10px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
@@ -353,6 +364,18 @@ html, body {
   margin-left: 4px;
 }
 
+/* ensure the title grows and the buttons sit side-by-side */
+.header-top .header-title {
+  flex: 1;
+}
+
+/* lay out the two buttons horizontally */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Icon buttons */
 .icon-btn {
   background: none;
@@ -384,6 +407,7 @@ body.undocked {
   color: var(--text-color);
   transition: background 0.3s, color 0.3s;
 }
+
 
 
 

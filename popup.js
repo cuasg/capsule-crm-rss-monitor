@@ -201,8 +201,10 @@ dockBtn.addEventListener("click", async () => {
     // docked: open the side panel in current window
     const win = await chrome.windows.getCurrent();
     await chrome.sidePanel.open({ windowId: win.id });
+    window.close();  // hides the side-panel  
   } else {
     // undocked: show the popup (and close any open side panel)
+    window.close();  // hides the side-panel  
     await chrome.action.openPopup();
   }
 
