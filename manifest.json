@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Capsule CRM RSS Monitor (Verified Final)",
-  "description": "Tracks Capsule CRM RSS feeds with refresh, notifications, options, and debug tools.",
-  "version": "3.0",
+  "name": "Capsule CRM RSS Monitor with OpenAI API Summaries",
+  "description": "Tracks Capsule CRM RSS feeds with refresh, notifications, options.",
+  "version": "1.0",
   "action": {
-    "default_title": "CRM Feed",
+    "default_title": "Capsule Extension",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
