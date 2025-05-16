@@ -60,14 +60,14 @@ async function fetchCapsuleEntries(token) {
   });
 }
 
-// Batch-summarize new entries via OpenAI, with full request/response logging
+// Batch-summarize new entries via OpenAI, with robust handling
 async function summarizeBatch(items) {
   const { openaiKey, enableSummaries } = await chrome.storage.local.get(
     ['openaiKey','enableSummaries']
   );
   if (!enableSummaries || !openaiKey) return {};
 
-  // Build payload
+  // 1) Build the payload
   const entriesPayload = items.map(i => ({ guid: i.guid, body: i.body }));
   console.debug('[AI] entriesPayload →', entriesPayload);
 
@@ -79,7 +79,8 @@ async function summarizeBatch(items) {
     role: 'user',
     content:
       `Summarize each of these entries in 20–30 words.\n` +
-      `Output a JSON array of objects with fields "guid" and "summary":\n\n` +
+      `Respond with exactly the JSON array of objects ` +
+      `with fields "guid" and "summary", and nothing else.\n\n` +
       JSON.stringify(entriesPayload)
   };
 
@@ -95,7 +96,7 @@ async function summarizeBatch(items) {
       body: JSON.stringify({
         model:       'gpt-3.5-turbo',
         messages:    [systemMsg, userMsg],
-        max_tokens:  items.length * 60,
+        max_tokens:  items.length * 200,    // allow plenty of room
         temperature: 0.5
       })
     });
@@ -105,57 +106,58 @@ async function summarizeBatch(items) {
       return {};
     }
 
-    // Grab the full JSON response
     const data = await resp.json();
     console.debug('[AI] full API response →', data);
 
-    // And the raw assistant content
-    text = data.choices?.[0]?.message?.content || '';
+    text = data.choices?.[0]?.message?.content?.trim() || '';
     console.debug('[AI] raw assistant content →', text);
   } catch (e) {
     console.error('[AI] request failed', e);
     return {};
   }
 
-  if (!text.trim()) {
+  if (!text) {
     console.warn('[AI] empty assistant content');
     return {};
   }
 
-  // Strip only the opening/closing ``` markers
-  console.debug('[AI] before fence-strip →', text);
+  // 2) Strip any accidental fences
   text = text
-    .replace(/^```(?:json)?\r?\n/, '') // remove leading ```json\n
-    .replace(/\r?\n```$/, '')          // remove trailing \n```
+    .replace(/^```(?:json)?\r?\n/, '')   // strip leading ```json
+    .replace(/\r?\n```$/, '')            // strip trailing ```
     .trim();
   console.debug('[AI] after fence-strip →', text);
 
-  // Extract JSON array
-  const match = text.match(/\[[\s\S]*\]/);
+  // 3) Auto-close the array if it's missing the trailing ]
+  if (text.startsWith('[') && !text.endsWith(']')) {
+    console.warn('[AI] auto-closing JSON array');
+    text = text + ']';
+  }
+
+  // 4) Extract and parse the array
+  const match = text.match(/^\s*(\[[\s\S]*\])\s*$/);
   if (!match) {
-    console.error('[AI] no JSON array found in assistant content', text);
+    console.error('[AI] no valid JSON array found', text);
     return {};
   }
-  text = match[0];
-  console.debug('[AI] JSON array extracted →', text);
+  const jsonArray = match[1];
+  console.debug('[AI] JSON array extracted →', jsonArray);
 
-  // Parse
   let parsed;
   try {
-    parsed = JSON.parse(text);
-    if (!Array.isArray(parsed)) throw new Error('Not an array');
+    parsed = JSON.parse(jsonArray);
+    if (!Array.isArray(parsed)) throw new Error('Parsed value is not an array');
   } catch (e) {
-    console.error('[AI] JSON.parse failed', e, '\nRaw JSON text:', text);
+    console.error('[AI] JSON.parse failed', e, '\nRaw JSON text:', jsonArray);
     return {};
   }
 
-  // Build map
+  // 5) Build and return the guid→summary map
   return parsed.reduce((map, { guid, summary }) => {
     if (guid && summary) map[guid] = summary;
     return map;
   }, {});
 }
-
 
 
 // Recompute and update the badge based on unread “Recent” (max 10)

@@ -95,6 +95,11 @@
       align-items: center;
       padding: 6px 8px;
       border-bottom: 1px solid var(--border-color);
+
+    /* allow wrapping */
+      white-space: normal;
+      word-break: break-all;
+      overflow-wrap: anywhere;  
     }
     .feed-list li button {
       background: none;
@@ -142,7 +147,7 @@
           <input id="feedInput" type="text" placeholder="https://example.com/feed.xml" />
           <button id="addFeedBtn" class="btn">Add</button>
         </div>
-      </div>
+      </div >
       <ul id="feedListUI" class="feed-list"></ul>
     </fieldset>
 
