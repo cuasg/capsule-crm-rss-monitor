@@ -9,28 +9,28 @@
 <body class="theme-light">
   <div id="sidebar">
     <header>
-        <!-- Header: title + Mark All Read + Refresh on one line -->
-        <div class="header-top">
-          <h1 class="header-title">📥 Capsule Feed</h1>
-          <div class="header-actions">
-            <button id="markAllReadBtn" title="Mark all as read" class="icon-btn">✓</button>
-            <button id="refreshBtn"    title="Refresh Now"   class="icon-btn">🔄</button>
-          </div>
+      <!-- Header: title + Mark All Read + Refresh on one line -->
+      <div class="header-top">
+        <h1 class="header-title">📥 Capsule Feed</h1>
+        <div class="header-actions">
+          <button id="markAllReadBtn" title="Mark all as read" class="icon-btn">✅</button>
+          <button id="refreshBtn"    title="Refresh feed"       class="icon-btn">🗘</button>
         </div>
+      </div>
 
       <!-- Search / settings / theme / dock controls -->
       <div id="controls">
         <input id="searchInput" type="text" placeholder="Search...">
-        <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
+        <button id="settingsBtn" class="icon-btn" title="Open settings">⚙️</button>
         <button id="themeToggle" class="icon-btn" title="Toggle theme">🌓</button>
         <button id="dockToggleBtn" class="icon-btn" title="Dock/Undock panel">⇱</button>
       </div>
 
       <!-- Tabs -->
       <nav>
-        <button class="tab active" data-tab="recent">Recent</button>
-        <button class="tab" data-tab="saved">Saved</button>
-        <button class="tab" data-tab="history">History</button>
+        <button class="tab active" data-tab="recent" title="View recent threads">Recent</button>
+        <button class="tab" data-tab="saved"  title="View saved threads">Saved</button>
+        <button class="tab" data-tab="history" title="View 24-hour history">History</button>
       </nav>
     </header>
 
@@ -49,10 +49,10 @@
           <p class="post-snippet"></p>
         </div>
         <div class="post-actions">
-          <button class="mark-read">✓</button>
-          <button class="mark-unread">👁</button>
-          <button class="delete">🗑</button>
-          <button class="save">📌</button>
+          <button class="mark-read"    title="Mark this thread read">✓</button>
+          <button class="mark-unread"  title="Mark this thread unread">👁</button>
+          <button class="delete"       title="Hide from Recent">🗑</button>
+          <button class="save"         title="Pin/unpin to Saved">📌</button>
         </div>
       </div>
     </template>

@@ -28,7 +28,7 @@ chrome.notifications.onClicked.addListener(notificationId => {
   });
 });
 
-// Fetch entries from Capsule API, include author & snippet + full body
+// Fetch entries from Capsule API, include author, snippet, smart title & link
 async function fetchCapsuleEntries(token) {
   const res = await fetch("https://api.capsulecrm.com/api/v2/entries", {
     headers: {
@@ -38,19 +38,41 @@ async function fetchCapsuleEntries(token) {
   });
   if (!res.ok) throw new Error("Capsule API error: " + res.status);
 
-  const json = await res.json();
-  return json.entries.map(entry => {
-    const partyId = entry.parties?.[0]?.id;
-    const link    = partyId
-      ? `https://msi-products.capsulecrm.com/party/${partyId}`
-      : "#";
+  const json    = await res.json();
+  const baseUrl = "https://msi-products.capsulecrm.com";  // your Capsule domain
 
+  return json.entries.map(entry => {
+    // 1) Determine party ID (array or singular)
+    const partyId = entry.parties?.[0]?.id
+                 || entry.party?.id
+                 || null;
+
+    // 2) Build a proper link—fallback to the CRM home page
+    const link = partyId
+      ? `${baseUrl}/party/${partyId}`
+      : `${baseUrl}/`;
+
+    // 3) Extract full body & snippet
     const full    = entry.content || "";
     const snippet = full.split("\n")[0].slice(0, 100);
 
+    // 4) Smart title:
+    //    - Use entry.subject if present (emails)
+    //    - Otherwise: "<Creator Name> Task"
+    let title = entry.subject?.trim();
+    if (!title) {
+      const actor = entry.creator?.name || "Someone";
+      title = `${actor} Task`;
+    }
+
+    // 5) Date
+    const date = entry.updatedAt
+               || entry.createdAt
+               || new Date().toISOString();
+
     return {
-      title:   entry.subject || "No subject",
-      date:    entry.updatedAt || entry.createdAt || new Date().toISOString(),
+      title,
+      date,
       link,
       guid:    entry.id.toString(),
       author:  entry.creator?.name || "",
@@ -59,6 +81,7 @@ async function fetchCapsuleEntries(token) {
     };
   });
 }
+
 
 // Batch-summarize new entries via OpenAI, with robust handling
 async function summarizeBatch(items) {
@@ -270,12 +293,20 @@ chrome.runtime.onInstalled.addListener(async () => {
   scheduleAlarm(DEFAULT_INTERVAL);
 });
 
-// On startup: apply dock & schedule only
+// On startup: apply dock, schedule AND fetch immediately
 chrome.runtime.onStartup.addListener(async () => {
   await applyDockSetting();
-  const { interval } = await getSettings();
+  const { feeds, notificationsEnabled, soundEnabled, capsuleToken, interval } = await getSettings();
+
+  // schedule the recurring alarm
   scheduleAlarm(interval);
+
+  // do an initial fetch right now (so storage gets seeded immediately)
+  feeds.forEach(url =>
+    checkFeed(url, notificationsEnabled, soundEnabled, capsuleToken)
+  );
 });
+
 
 // Polling alarm
 chrome.alarms.onAlarm.addListener(async alarm => {

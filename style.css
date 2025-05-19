@@ -408,6 +408,22 @@ body.undocked {
   transition: background 0.3s, color 0.3s;
 }
 
+/* in style.css */
+
+@keyframes spin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.icon-btn.loading {
+  animation: spin 1s linear infinite;
+}
+
+/* optionally dim the button while loading */
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 
 

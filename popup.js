@@ -181,11 +181,34 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
   loadTheme();
+  loadPosts();  // just render existing cache on open
 
-  // On open, manual refresh then loadPosts
-  chrome.runtime.sendMessage({ type: "manualRefresh" }, resp => {
-    if (resp && resp.ok) loadPosts();
+  const refreshBtn = document.getElementById("refreshBtn");
+
+  // 1) Click handler: show spinner + send manual refresh
+  refreshBtn.addEventListener("click", () => {
+    refreshBtn.disabled = true;
+    refreshBtn.classList.add("loading");
+    chrome.runtime.sendMessage({ type: "manualRefresh" }, resp => {
+      if (!resp?.ok) {
+        // if it fails immediately, stop spinner
+        refreshBtn.disabled = false;
+        refreshBtn.classList.remove("loading");
+        console.error("Manual refresh failed");
+      }
+    });
   });
+
+  // 2) When storage updates, reload posts & clear spinner
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.rssItems) {
+      loadPosts();
+      refreshBtn.disabled = false;
+      refreshBtn.classList.remove("loading");
+    }
+  });
+
+
 
   // Settings & theme toggle
   document.getElementById("settingsBtn").addEventListener("click", () => chrome.runtime.openOptionsPage());
