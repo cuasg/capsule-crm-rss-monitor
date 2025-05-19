@@ -13,7 +13,7 @@ async function applyDockSetting() {
   }
 }
 
-// 1) On load, seed seenGuids so we don’t re‑notify existing items
+// 1) On load, seed seenGuids so we don’t re-notify existing items
 chrome.storage.local.get("rssItems", data => {
   (data.rssItems || []).forEach(item => seenGuids.add(item.guid));
 });
@@ -81,7 +81,6 @@ async function fetchCapsuleEntries(token) {
     };
   });
 }
-
 
 // Batch-summarize new entries via OpenAI, with robust handling
 async function summarizeBatch(items) {
@@ -182,7 +181,6 @@ async function summarizeBatch(items) {
   }, {});
 }
 
-
 // Recompute and update the badge based on unread “Recent” (max 10)
 function updateBadgeFromStorage() {
   chrome.storage.local.get("rssItems", data => {
@@ -221,7 +219,8 @@ async function checkFeed(_, notificationsEnabled, soundEnabled, capsuleToken) {
 
       chrome.storage.local.get("rssItems", data => {
         const existing = Array.isArray(data.rssItems) ? data.rssItems : [];
-        const updated  = [...newItems, ...existing].slice(0, 100);
+        // NO cap: keep all entries
+        const updated  = [...newItems, ...existing];
         chrome.storage.local.set({ rssItems: updated }, updateBadgeFromStorage);
       });
 
@@ -306,7 +305,6 @@ chrome.runtime.onStartup.addListener(async () => {
     checkFeed(url, notificationsEnabled, soundEnabled, capsuleToken)
   );
 });
-
 
 // Polling alarm
 chrome.alarms.onAlarm.addListener(async alarm => {
