@@ -203,6 +203,7 @@ async function checkFeed(_, notificationsEnabled, soundEnabled, capsuleToken) {
     const entries = await fetchCapsuleEntries(capsuleToken);
     console.log("[DEBUG] Entries received:", entries.length);
 
+    // Identify only truly new items
     const newItems = entries.filter(item => {
       if (!seenGuids.has(item.guid)) {
         seenGuids.add(item.guid);
@@ -211,43 +212,57 @@ async function checkFeed(_, notificationsEnabled, soundEnabled, capsuleToken) {
       return false;
     });
 
-    if (newItems.length) {
-      const summaryMap = await summarizeBatch(newItems);
-      newItems.forEach(item => {
-        item.summary = summaryMap[item.guid] || item.snippet;
-      });
+    if (!newItems.length) return;
 
-      chrome.storage.local.get("rssItems", data => {
-        const existing = Array.isArray(data.rssItems) ? data.rssItems : [];
-        // NO cap: keep all entries
-        const updated  = [...newItems, ...existing];
-        chrome.storage.local.set({ rssItems: updated }, updateBadgeFromStorage);
-      });
+    // 1) AI summaries
+    const summaryMap = await summarizeBatch(newItems);
+    newItems.forEach(item => {
+      item.summary = summaryMap[item.guid] || item.snippet;
+    });
 
-      newItems.forEach(item => {
-        if (notificationsEnabled) {
-          chrome.notifications.create(
-            item.guid,
-            {
-              type:           "basic",
-              iconUrl:        "icons/icon128.png",
-              title:          item.title,
-              message:        item.summary,
-              contextMessage: `By ${item.author}`,
-              priority:       1
-            }
-          );
-        }
-        if (soundEnabled && typeof Audio !== "undefined") {
-          const audio = new Audio(chrome.runtime.getURL("ding.mp3"));
-          audio.play();
-        }
+    // 2) Store (no cap)
+    chrome.storage.local.get("rssItems", data => {
+      const existing = Array.isArray(data.rssItems) ? data.rssItems : [];
+      const updated  = [...newItems, ...existing];
+      chrome.storage.local.set({ rssItems: updated }, updateBadgeFromStorage);
+    });
+
+    // 3) Notifications: aggregate into a single "list"
+    if (notificationsEnabled) {
+      const notifId = "crm-activity-group";  // fixed ID to replace on update
+      const displayItems = newItems.slice(0, 5).map(item => ({
+        title:   item.title,
+        message: item.summary
+      }));
+
+      const options = {
+        type:       "list",
+        iconUrl:    "icons/icon128.png",
+        title:      `You have ${newItems.length} new CRM activit${newItems.length === 1 ? "y" : "ies"}`,
+        message:    newItems.length > 5
+                     ? `And ${newItems.length - 5} more…`
+                     : "",
+        items:      displayItems,
+        priority:   1
+      };
+
+      // Create or update the grouped notification
+      chrome.notifications.create(notifId, options, () => {
+        // no-op callback
       });
     }
+
+    // 4) Play sound once for the batch
+    if (soundEnabled && typeof Audio !== "undefined") {
+      const audio = new Audio(chrome.runtime.getURL("ding.mp3"));
+      audio.play();
+    }
+
   } catch (err) {
     console.error("[ERROR] Capsule API fetch failed:", err);
   }
 }
+
 
 // Schedule polling interval
 function scheduleAlarm(interval) {
