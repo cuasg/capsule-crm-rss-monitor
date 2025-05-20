@@ -141,63 +141,67 @@ async function summarizeBatch(items) {
       body: JSON.stringify({
         model:       'gpt-3.5-turbo',
         messages:    [systemMsg, userMsg],
-        max_tokens:  items.length * 200,    // allow plenty of room
+        max_tokens:  items.length * 200,
         temperature: 0.5
       })
     });
 
+    // 2) Bail on HTTP errors (500, 429, etc.)
     if (!resp.ok) {
       console.error('[AI] HTTP error', resp.status, resp.statusText);
       return {};
     }
 
+    // 3) Grab the assistant’s raw content
     const data = await resp.json();
     console.debug('[AI] full API response →', data);
-
     text = data.choices?.[0]?.message?.content?.trim() || '';
     console.debug('[AI] raw assistant content →', text);
+
   } catch (e) {
     console.error('[AI] request failed', e);
     return {};
   }
 
+  // 4) Nothing returned? bail.
   if (!text) {
     console.warn('[AI] empty assistant content');
     return {};
   }
 
-  // 2) Strip any accidental fences
+  // 5) Strip any ``` fences
   text = text
-    .replace(/^```(?:json)?\r?\n/, '')   // strip leading ```json
-    .replace(/\r?\n```$/, '')            // strip trailing ```
+    .replace(/^```(?:json)?\r?\n/, '')
+    .replace(/\r?\n```$/, '')
     .trim();
   console.debug('[AI] after fence-strip →', text);
 
-  // 3) Auto-close the array if it's missing the trailing ]
+  // 6) Auto-close a missing bracket
   if (text.startsWith('[') && !text.endsWith(']')) {
     console.warn('[AI] auto-closing JSON array');
-    text = text + ']';
+    text += ']';
   }
 
-  // 4) Extract and parse the array
-  const match = text.match(/^\s*(\[[\s\S]*\])\s*$/);
-  if (!match) {
+  // 7) Extract exactly the JSON array
+  const m = text.match(/^\s*(\[[\s\S]*\])\s*$/);
+  if (!m) {
     console.error('[AI] no valid JSON array found', text);
     return {};
   }
-  const jsonArray = match[1];
+  const jsonArray = m[1];
   console.debug('[AI] JSON array extracted →', jsonArray);
 
+  // 8) Parse safely
   let parsed;
   try {
     parsed = JSON.parse(jsonArray);
-    if (!Array.isArray(parsed)) throw new Error('Parsed value is not an array');
+    if (!Array.isArray(parsed)) throw new Error('Not an array');
   } catch (e) {
     console.error('[AI] JSON.parse failed', e, '\nRaw JSON text:', jsonArray);
     return {};
   }
 
-  // 5) Build and return the guid→summary map
+  // 9) Build and return guid→summary map
   return parsed.reduce((map, { guid, summary }) => {
     if (guid && summary) map[guid] = summary;
     return map;
