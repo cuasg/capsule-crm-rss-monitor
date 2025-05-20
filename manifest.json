@@ -16,7 +16,8 @@
     "storage",
     "notifications",
     "alarms",
-    "sidePanel"
+    "sidePanel",
+    "tabs"
   ],
   "host_permissions": [
     "https://msi-products.capsulecrm.com/*",

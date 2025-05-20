@@ -2,6 +2,7 @@
 
 let seenGuids = new Set();
 const DEFAULT_INTERVAL = 1;
+let lastTabId = null;  // <-- track the single tab
 
 // Apply dock/undock side panel behavior based on stored setting
 async function applyDockSetting() {
@@ -26,6 +27,28 @@ chrome.notifications.onClicked.addListener(notificationId => {
       chrome.tabs.create({ url: item.link });
     }
   });
+});
+
+// 3) Listen for popup entries to open or update the same tab
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === "openEntry" && msg.url) {
+    if (lastTabId !== null) {
+      // try to update existing tab
+      chrome.tabs.update(lastTabId, { url: msg.url, active: true }, tab => {
+        if (chrome.runtime.lastError || !tab) {
+          // if it fails (e.g. closed), open new
+          chrome.tabs.create({ url: msg.url }, t => { lastTabId = t.id; });
+        } else {
+          lastTabId = tab.id;
+        }
+      });
+    } else {
+      // first time: open new tab
+      chrome.tabs.create({ url: msg.url }, tab => { lastTabId = tab.id; });
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
 });
 
 // Fetch entries from Capsule API, include author, snippet, smart title & link

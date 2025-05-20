@@ -9,7 +9,6 @@
 <body class="theme-light">
   <div id="sidebar">
     <header>
-      <!-- Header: title + Mark All Read + Refresh on one line -->
       <div class="header-top">
         <h1 class="header-title">📥 Capsule Feed</h1>
         <div class="header-actions">
@@ -18,7 +17,6 @@
         </div>
       </div>
 
-      <!-- Search / settings / theme / dock controls -->
       <div id="controls">
         <input id="searchInput" type="text" placeholder="Search...">
         <button id="settingsBtn" class="icon-btn" title="Open settings">⚙️</button>
@@ -26,7 +24,6 @@
         <button id="dockToggleBtn" class="icon-btn" title="Dock/Undock panel">⇱</button>
       </div>
 
-      <!-- Tabs -->
       <nav>
         <button class="tab active" data-tab="recent" title="View recent threads">Recent</button>
         <button class="tab" data-tab="saved"  title="View saved threads">Saved</button>
@@ -41,7 +38,8 @@
     <template id="postTemplate">
       <div class="post">
         <div class="title-container">
-          <a class="post-title" href="#" target="_blank" rel="noopener noreferrer"></a>
+          <!-- removed target & rel -->
+          <a class="post-title" href="#"></a>
           <span class="post-time"></span>
         </div>
         <div class="post-meta">
@@ -49,10 +47,10 @@
           <p class="post-snippet"></p>
         </div>
         <div class="post-actions">
-          <button class="mark-read"    title="Mark this thread read">✓</button>
-          <button class="mark-unread"  title="Mark this thread unread">👁</button>
-          <button class="delete"       title="Hide from Recent">🗑</button>
-          <button class="save"         title="Pin/unpin to Saved">📌</button>
+          <button class="mark-read"   title="Mark this thread read">✓</button>
+          <button class="mark-unread" title="Mark this thread unread">👁</button>
+          <button class="delete"      title="Hide from Recent">🗑</button>
+          <button class="save"        title="Pin/unpin to Saved">📌</button>
         </div>
       </div>
     </template>

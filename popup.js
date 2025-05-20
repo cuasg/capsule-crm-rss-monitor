@@ -36,62 +36,55 @@ function loadPosts() {
 // Render posts based on active tab and search filter
 // popup.js
 
-// … keep normalizeSubject, loadTheme, toggleTheme, loadPosts, etc. …
-
 function renderPosts(tab) {
   const feedList   = document.getElementById("feedList");
-  const searchTerm = (document.getElementById("searchInput").value || "")
-    .toLowerCase();
+  const searchTerm = (document.getElementById("searchInput").value || "").toLowerCase();
   const template   = document.getElementById("postTemplate");
 
   feedList.innerHTML = "";
 
-  // 1) Build raw list based on which tab we’re on
+  // 1) Filter raw list by tab
   let raw;
   if (tab === "recent") {
     raw = posts.filter(p => !p.deleted);
   } else if (tab === "saved") {
     raw = posts.filter(p => p.saved);
-  } else {  // history
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;  // last 24h
+  } else { // history
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000; // last 24h
     raw = posts.filter(p => new Date(p.date).getTime() >= cutoff);
   }
 
-  // 2) Sort by descending date
+  // 2) Sort descending by date
   raw.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // 3) Group by normalized subject
+  // 3) Group into threads by normalized subject
   const seen = new Set();
   const items = [];
   for (const p of raw) {
     const norm = normalizeSubject(p.title);
     if (seen.has(norm)) continue;
     seen.add(norm);
-    // gather all in this thread (from the same raw array)
+    // gather all posts in this thread
     const thread = raw
       .filter(q => normalizeSubject(q.title) === norm)
       .sort((a, b) => new Date(b.date) - new Date(a.date));
     items.push({ latest: thread[0], count: thread.length });
-    // cap recent threads at 10
+    // cap recent to 10 threads
     if (tab === "recent" && items.length >= 10) break;
   }
 
-  // 4) Filter by searchTerm across title, author, AND full body
+  // 4) Apply search across title, author, body
   const visible = items.filter(({ latest: p }) => {
-    const hay = [
-      p.title,
-      p.author,
-      p.body  // full content
-    ].join(" ").toLowerCase();
-    return hay.includes(searchTerm);
+    const haystack = [p.title, p.author, p.body].join(" ").toLowerCase();
+    return haystack.includes(searchTerm);
   });
 
-  if (visible.length === 0) {
+  if (!visible.length) {
     feedList.innerHTML = "<p class='empty'>No posts found.</p>";
     return;
   }
 
-  // 5) Render exactly as before
+  // 5) Render each thread-card
   visible.forEach(item => {
     const post        = item.latest;
     const threadCount = item.count;
@@ -103,10 +96,14 @@ function renderPosts(tab) {
     const container   = clone.querySelector(".post");
     const titleCt     = clone.querySelector(".title-container");
 
-    // Title + link
+    // Title + click handler (mark read + open/reuse tab)
     link.textContent = post.title;
     link.href        = post.link;
-    link.addEventListener("click", () => updatePost(post.guid, { read: true }));
+    link.addEventListener("click", e => {
+      e.preventDefault();
+      updatePost(post.guid, { read: true });
+      chrome.runtime.sendMessage({ type: "openEntry", url: post.link });
+    });
 
     // Thread badge
     if (threadCount > 1) {
@@ -118,24 +115,25 @@ function renderPosts(tab) {
       titleCt.prepend(badge);
     }
 
-    // Date / author / snippet
-    time.textContent        = new Date(post.date).toLocaleString();
-    authorEl.textContent    = post.author ? `by ${post.author}` : "";
-    snippetEl.textContent   = post.summary || post.snippet || "";
+    // Date, author & snippet/summary
+    time.textContent      = new Date(post.date).toLocaleString();
+    authorEl.textContent  = post.author ? `by ${post.author}` : "";
+    snippetEl.textContent = post.summary || post.snippet || "";
 
-    // Read / Saved styling
+    // Read / saved styling
     if (post.read)  container.classList.add("read");
     if (post.saved) container.classList.add("saved");
 
-    // Buttons
-    clone.querySelector(".mark-read").onclick    = () => updatePost(post.guid, { read: true });
-    clone.querySelector(".mark-unread").onclick  = () => updatePost(post.guid, { read: false });
-    clone.querySelector(".delete").onclick       = () => updatePost(post.guid, { deleted: true });
-    clone.querySelector(".save").onclick         = () => updatePost(post.guid, { saved: !post.saved });
+    // Action buttons
+    clone.querySelector(".mark-read").onclick   = () => updatePost(post.guid, { read: true });
+    clone.querySelector(".mark-unread").onclick = () => updatePost(post.guid, { read: false });
+    clone.querySelector(".delete").onclick      = () => updatePost(post.guid, { deleted: true });
+    clone.querySelector(".save").onclick        = () => updatePost(post.guid, { saved: !post.saved });
 
     feedList.appendChild(clone);
   });
 }
+
 
 // Update all entries matching this GUID, re-sort & re-render
 function updatePost(guid, changes) {
