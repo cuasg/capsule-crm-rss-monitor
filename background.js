@@ -2,15 +2,22 @@
 
 let seenGuids = new Set();
 const DEFAULT_INTERVAL = 1;
-let lastTabId = null;  // <-- track the single tab
+let lastTabId = null;
+
+// 0) On load, restore lastTabId from storage
+chrome.storage.local.get("lastTabId", data => {
+  if (data.lastTabId) {
+    lastTabId = data.lastTabId;
+  }
+});
 
 // Apply dock/undock side panel behavior based on stored setting
 async function applyDockSetting() {
-  const { enableDock = false } = await chrome.storage.local.get('enableDock');
+  const { enableDock = false } = await chrome.storage.local.get("enableDock");
   try {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: enableDock });
   } catch (e) {
-    console.warn('[WARN] sidePanel.setPanelBehavior failed', e);
+    console.warn("[WARN] sidePanel.setPanelBehavior failed", e);
   }
 }
 
@@ -19,37 +26,51 @@ chrome.storage.local.get("rssItems", data => {
   (data.rssItems || []).forEach(item => seenGuids.add(item.guid));
 });
 
-// 2) Single notification click handler: open exactly one tab per click
+// 2) Notification click → open/reuse tab
 chrome.notifications.onClicked.addListener(notificationId => {
   chrome.storage.local.get("rssItems", data => {
     const item = (data.rssItems || []).find(i => i.guid === notificationId);
     if (item && item.link) {
-      chrome.tabs.create({ url: item.link });
+      openOrUpdateTab(item.link);
     }
   });
 });
 
-// 3) Listen for popup entries to open or update the same tab
+// 3) Handle popup link clicks to open/reuse a single tab
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "openEntry" && msg.url) {
-    if (lastTabId !== null) {
-      // try to update existing tab
-      chrome.tabs.update(lastTabId, { url: msg.url, active: true }, tab => {
-        if (chrome.runtime.lastError || !tab) {
-          // if it fails (e.g. closed), open new
-          chrome.tabs.create({ url: msg.url }, t => { lastTabId = t.id; });
-        } else {
-          lastTabId = tab.id;
-        }
-      });
-    } else {
-      // first time: open new tab
-      chrome.tabs.create({ url: msg.url }, tab => { lastTabId = tab.id; });
-    }
+    openOrUpdateTab(msg.url);
     sendResponse({ ok: true });
     return true;
   }
 });
+
+// Helper: open a new tab or update the existing one, and persist its ID
+function openOrUpdateTab(url) {
+  if (lastTabId !== null) {
+    // try updating existing tab
+    chrome.tabs.update(lastTabId, { url, active: true }, tab => {
+      if (chrome.runtime.lastError || !tab) {
+        // tab gone or error → create new
+        chrome.tabs.create({ url }, t => {
+          lastTabId = t.id;
+          chrome.storage.local.set({ lastTabId });
+        });
+      } else {
+        // success
+        lastTabId = tab.id;
+        chrome.storage.local.set({ lastTabId });
+      }
+    });
+  } else {
+    // first time: open new
+    chrome.tabs.create({ url }, t => {
+      lastTabId = t.id;
+      chrome.storage.local.set({ lastTabId });
+    });
+  }
+}
+
 
 // Fetch entries from Capsule API, include author, snippet, smart title & link
 async function fetchCapsuleEntries(token) {
@@ -127,7 +148,7 @@ async function summarizeBatch(items) {
       `Respond with exactly the JSON array of objects ` +
       `with fields "guid" and "summary", and nothing else.\n\n` +
       JSON.stringify(entriesPayload)
-  };
+  }
 
   let text = '';
   try {
