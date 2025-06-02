@@ -2,14 +2,6 @@
 
 let seenGuids = new Set();
 const DEFAULT_INTERVAL = 1;
-let lastTabId = null;
-
-// 0) On load, restore lastTabId from storage
-chrome.storage.local.get("lastTabId", data => {
-  if (data.lastTabId) {
-    lastTabId = data.lastTabId;
-  }
-});
 
 // Apply dock/undock side panel behavior based on stored setting
 async function applyDockSetting() {
@@ -26,7 +18,7 @@ chrome.storage.local.get("rssItems", data => {
   (data.rssItems || []).forEach(item => seenGuids.add(item.guid));
 });
 
-// 2) Notification click → open/reuse tab
+// 2) Single notification click handler: open/reuse a single tab
 chrome.notifications.onClicked.addListener(notificationId => {
   chrome.storage.local.get("rssItems", data => {
     const item = (data.rssItems || []).find(i => i.guid === notificationId);
@@ -36,7 +28,7 @@ chrome.notifications.onClicked.addListener(notificationId => {
   });
 });
 
-// 3) Handle popup link clicks to open/reuse a single tab
+// 3) Handle popup link clicks to open/reuse the same tab
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "openEntry" && msg.url) {
     openOrUpdateTab(msg.url);
@@ -45,32 +37,44 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// Helper: open a new tab or update the existing one, and persist its ID
+/**
+ * Always reads “lastTabId” from storage, checks if that tab still exists,
+ * and either updates it or creates a new one.  Persists whichever tabId we use.
+ */
 function openOrUpdateTab(url) {
-  if (lastTabId !== null) {
-    // try updating existing tab
-    chrome.tabs.update(lastTabId, { url, active: true }, tab => {
-      if (chrome.runtime.lastError || !tab) {
-        // tab gone or error → create new
-        chrome.tabs.create({ url }, t => {
-          lastTabId = t.id;
-          chrome.storage.local.set({ lastTabId });
-        });
-      } else {
-        // success
-        lastTabId = tab.id;
-        chrome.storage.local.set({ lastTabId });
-      }
-    });
-  } else {
-    // first time: open new
-    chrome.tabs.create({ url }, t => {
-      lastTabId = t.id;
-      chrome.storage.local.set({ lastTabId });
-    });
-  }
+  chrome.storage.local.get("lastTabId", data => {
+    const storedId = data.lastTabId;
+    if (storedId != null) {
+      // Try updating the existing tab
+      chrome.tabs.get(storedId, tab => {
+        if (chrome.runtime.lastError || !tab) {
+          // Tab was closed or is invalid → open a new one
+          chrome.tabs.create({ url }, newTab => {
+            chrome.storage.local.set({ lastTabId: newTab.id });
+          });
+        } else {
+          // Update the still-open tab
+          chrome.tabs.update(storedId, { url, active: true }, updatedTab => {
+            if (chrome.runtime.lastError || !updatedTab) {
+              // If update failed, create a new tab instead
+              chrome.tabs.create({ url }, freshTab => {
+                chrome.storage.local.set({ lastTabId: freshTab.id });
+              });
+            } else {
+              // Persist the same ID for future use
+              chrome.storage.local.set({ lastTabId: storedId });
+            }
+          });
+        }
+      });
+    } else {
+      // No tab yet: open first-time
+      chrome.tabs.create({ url }, newTab => {
+        chrome.storage.local.set({ lastTabId: newTab.id });
+      });
+    }
+  });
 }
-
 
 // Fetch entries from Capsule API, include author, snippet, smart title & link
 async function fetchCapsuleEntries(token) {
@@ -129,100 +133,99 @@ async function fetchCapsuleEntries(token) {
 // Batch-summarize new entries via OpenAI, with robust handling
 async function summarizeBatch(items) {
   const { openaiKey, enableSummaries } = await chrome.storage.local.get(
-    ['openaiKey','enableSummaries']
+    ["openaiKey","enableSummaries"]
   );
   if (!enableSummaries || !openaiKey) return {};
 
   // 1) Build the payload
   const entriesPayload = items.map(i => ({ guid: i.guid, body: i.body }));
-  console.debug('[AI] entriesPayload →', entriesPayload);
+  console.debug("[AI] entriesPayload →", entriesPayload);
 
   const systemMsg = {
-    role: 'system',
-    content: 'You are an assistant that produces concise summaries of CRM entries.'
+    role: "system",
+    content: "You are an assistant that produces concise summaries of CRM entries."
   };
   const userMsg = {
-    role: 'user',
+    role: "user",
     content:
       `Summarize each of these entries in 20–30 words.\n` +
       `Respond with exactly the JSON array of objects ` +
       `with fields "guid" and "summary", and nothing else.\n\n` +
       JSON.stringify(entriesPayload)
-  }
+  };
 
-  let text = '';
+  let text = "";
   try {
-    console.debug('[AI] Sending request to OpenAI…');
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
+    console.debug("[AI] Sending request to OpenAI…");
+    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
       headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${openaiKey}`
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${openaiKey}`
       },
       body: JSON.stringify({
-        model:       'gpt-3.5-turbo',
+        model:       "gpt-3.5-turbo",
         messages:    [systemMsg, userMsg],
         max_tokens:  items.length * 200,
         temperature: 0.5
       })
     });
 
-    // 2) Bail on HTTP errors (500, 429, etc.)
+    // 2) Bail on HTTP errors
     if (!resp.ok) {
-      console.error('[AI] HTTP error', resp.status, resp.statusText);
+      console.error("[AI] HTTP error", resp.status, resp.statusText);
       return {};
     }
 
-    // 3) Grab the assistant’s raw content
     const data = await resp.json();
-    console.debug('[AI] full API response →', data);
-    text = data.choices?.[0]?.message?.content?.trim() || '';
-    console.debug('[AI] raw assistant content →', text);
+    console.debug("[AI] full API response →", data);
 
+    text = data.choices?.[0]?.message?.content?.trim() || "";
+    console.debug("[AI] raw assistant content →", text);
   } catch (e) {
-    console.error('[AI] request failed', e);
+    console.error("[AI] request failed", e);
     return {};
   }
 
-  // 4) Nothing returned? bail.
+  // 3) Nothing returned? bail.
   if (!text) {
-    console.warn('[AI] empty assistant content');
+    console.warn("[AI] empty assistant content");
     return {};
   }
 
-  // 5) Strip any ``` fences
+  // 4) Strip any ``` fences
   text = text
-    .replace(/^```(?:json)?\r?\n/, '')
-    .replace(/\r?\n```$/, '')
+    .replace(/^```(?:json)?\r?\n/, "")
+    .replace(/\r?\n```$/, "")
     .trim();
-  console.debug('[AI] after fence-strip →', text);
+  console.debug("[AI] after fence-strip →", text);
 
-  // 6) Auto-close a missing bracket
-  if (text.startsWith('[') && !text.endsWith(']')) {
-    console.warn('[AI] auto-closing JSON array');
-    text += ']';
+  // 5) Auto-close a missing bracket
+  if (text.startsWith("[") && !text.endsWith("]")) {
+    console.warn("[AI] auto-closing JSON array");
+    text += "]";
   }
 
-  // 7) Extract exactly the JSON array
+  // 6) Extract exactly the JSON array
   const m = text.match(/^\s*(\[[\s\S]*\])\s*$/);
   if (!m) {
-    console.error('[AI] no valid JSON array found', text);
+    console.error("[AI] no valid JSON array found", text);
     return {};
   }
   const jsonArray = m[1];
-  console.debug('[AI] JSON array extracted →', jsonArray);
+  console.debug("[AI] JSON array extracted →", jsonArray);
 
-  // 8) Parse safely
+  // 7) Parse safely
   let parsed;
   try {
     parsed = JSON.parse(jsonArray);
-    if (!Array.isArray(parsed)) throw new Error('Not an array');
+    if (!Array.isArray(parsed)) throw new Error("Parsed value is not an array");
   } catch (e) {
-    console.error('[AI] JSON.parse failed', e, '\nRaw JSON text:', jsonArray);
+    console.error("[AI] JSON.parse failed", e, "\nRaw JSON text:", jsonArray);
     return {};
   }
 
-  // 9) Build and return guid→summary map
+  // 8) Build and return guid→summary map
   return parsed.reduce((map, { guid, summary }) => {
     if (guid && summary) map[guid] = summary;
     return map;
@@ -311,7 +314,6 @@ async function checkFeed(_, notificationsEnabled, soundEnabled, capsuleToken) {
   }
 }
 
-
 // Schedule polling interval
 function scheduleAlarm(interval) {
   chrome.alarms.clearAll(() =>
@@ -349,9 +351,7 @@ async function getSettings() {
 chrome.runtime.onInstalled.addListener(async () => {
   await applyDockSetting();
   const { feeds, capsuleToken } = await getSettings();
-  feeds.forEach(url =>
-    checkFeed(url, false, false, capsuleToken)
-  );
+  feeds.forEach(url => checkFeed(url, false, false, capsuleToken));
   scheduleAlarm(DEFAULT_INTERVAL);
 });
 
