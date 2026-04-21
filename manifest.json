@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Capsule CRM RSS Monitor with OpenAI API Summaries",
-  "description": "Tracks Capsule CRM RSS feeds with refresh, notifications, options.",
-  "version": "1.9",
+  "name": "Capsule CRM Activity Monitor",
+  "description": "Tracks Capsule CRM activity with refresh, notifications, a side panel, and optional AI summaries.",
+  "version": "2.0",
   "action": {
-    "default_title": "Capsule Extension",
+    "default_title": "Capsule Activity Monitor",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -13,15 +13,15 @@
     }
   },
   "permissions": [
-    "storage",
-    "notifications",
     "alarms",
-    "sidePanel"
+    "notifications",
+    "sidePanel",
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
-    "https://msi-products.capsulecrm.com/*",
-    "https://api.openai.com/*",
-    "https://api.capsulecrm.com/*"
+    "https://api.capsulecrm.com/*",
+    "https://api.openai.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -35,14 +35,5 @@
     "default_path": "popup.html",
     "open_panel_on_action_click": false
   },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "style.css",
-        "ding.mp3"
-      ],
-      "matches": ["<all_urls>"]
-    }
-  ],
   "options_page": "options.html"
 }

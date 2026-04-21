@@ -2,61 +2,124 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>CRM Feed</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Capsule Activity</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body class="theme-light">
+<body class="theme-light popup-page">
   <div id="sidebar">
     <header>
-      <div class="header-top">
-        <h1 class="header-title">📥 Capsule Feed</h1>
-        <div class="header-actions">
-          <button id="markAllReadBtn" title="Mark all as read" class="icon-btn">✅</button>
-          <button id="refreshBtn"    title="Refresh feed"       class="icon-btn">🗘</button>
+      <div class="toolbar">
+        <input id="searchInput" type="text" placeholder="Search Capsule activity..." />
+        <div class="toolbar-actions">
+          <button id="settingsBtn" class="icon-btn" title="Open settings" type="button">⚙</button>
+          <button id="themeToggle" class="icon-btn" title="Toggle theme" type="button">◐</button>
+          <button id="dockToggleBtn" class="icon-btn" title="Dock or undock panel" type="button">⇱</button>
+          <button id="markAllReadBtn" title="Mark all as read" class="icon-btn" type="button">✓</button>
+          <button id="refreshBtn" title="Refresh feed" class="icon-btn" type="button">↻</button>
         </div>
       </div>
 
-      <div id="controls">
-        <input id="searchInput" type="text" placeholder="Search...">
-        <button id="settingsBtn" class="icon-btn" title="Open settings">⚙️</button>
-        <button id="themeToggle" class="icon-btn" title="Toggle theme">🌓</button>
-        <button id="dockToggleBtn" class="icon-btn" title="Dock/Undock panel">⇱</button>
-      </div>
-
       <nav>
-        <button class="tab active" data-tab="recent" title="View recent threads">Recent</button>
-        <button class="tab" data-tab="saved"  title="View saved threads">Saved</button>
-        <button class="tab" data-tab="history" title="View 24-hour history">History</button>
+        <button class="tab active" data-tab="recent" title="View recent threads" type="button">Recent</button>
+        <button class="tab" data-tab="saved" title="View saved threads" type="button">Saved</button>
+        <button class="tab" data-tab="history" title="View 24-hour history" type="button">History</button>
+        <button class="tab" data-tab="digests" title="View saved digests" type="button">Digests</button>
+        <button class="tab" data-tab="tasks" title="View Capsule tasks" type="button">Tasks</button>
       </nav>
+
+      <section id="taskSummary" class="task-summary hidden" aria-label="Task summary">
+        <button class="task-summary-btn" data-task-filter="open" title="Open tasks" aria-label="Open tasks" type="button"><span aria-hidden="true">○</span><strong id="taskOpenCount">0</strong></button>
+        <button class="task-summary-btn" data-task-filter="due_today" title="Tasks due today" aria-label="Tasks due today" type="button"><span aria-hidden="true">◔</span><strong id="taskDueTodayCount">0</strong></button>
+        <button class="task-summary-btn" data-task-filter="overdue" title="Overdue tasks" aria-label="Overdue tasks" type="button"><span aria-hidden="true">!</span><strong id="taskOverdueCount">0</strong></button>
+        <button id="taskFilterClear" class="task-summary-btn task-summary-clear hidden" title="Clear task filter" aria-label="Clear task filter" type="button"><span aria-hidden="true">×</span></button>
+      </section>
+      <section id="taskOwnerBar" class="task-owner-bar hidden" aria-label="Task owner filter">
+        <select id="taskOwnerFilter" class="task-owner-filter">
+          <option value="all">All task owners</option>
+        </select>
+      </section>
+
+      <section id="historyFilters" class="history-filters hidden" aria-label="History filters">
+        <select id="historyAuthorFilter" class="history-filter">
+          <option value="">All authors</option>
+        </select>
+        <select id="historyRecipientFilter" class="history-filter">
+          <option value="">All recipients</option>
+        </select>
+        <select id="historyRangeFilter" class="history-filter">
+          <option value="24h">Last 24 hours</option>
+          <option value="3d">Last 3 days</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="all">All cached history</option>
+        </select>
+      </section>
+
+      <section id="digestControls" class="digest-controls hidden" aria-label="Digest controls">
+        <button id="generateDigestBtn" class="btn" type="button">Generate End-of-Day Digest</button>
+      </section>
     </header>
 
     <section id="feedList">
       <p class="empty">Loading posts...</p>
     </section>
+    <section id="runtimeStatus" class="runtime-status hidden" aria-live="polite"></section>
+    <p id="actionStatus" class="action-status hidden" aria-live="polite"></p>
 
     <template id="postTemplate">
       <div class="post">
-        <div class="title-container">
-          <!-- removed target & rel -->
-          <a class="post-title" href="#"></a>
-          <span class="post-time"></span>
-        </div>
-        <div class="post-meta">
-          <small class="post-author"></small>
+        <div class="post-toggle" tabindex="-1">
+          <div class="post-topline">
+            <div class="post-insights"></div>
+            <div class="post-aside">
+              <div class="post-actions">
+                <button class="mark-read icon-only-btn" title="Mark thread read" type="button">✓</button>
+                <button class="mark-unread icon-only-btn" title="Mark thread unread" type="button">○</button>
+                <button class="save icon-only-btn" title="Pin or unpin thread" type="button">☆</button>
+                <button class="delete icon-only-btn" title="Hide thread" type="button">✕</button>
+              </div>
+              <span class="post-time"></span>
+            </div>
+          </div>
+          <div class="post-mainline">
+            <div class="title-container">
+              <span class="thread-chevron" aria-hidden="true">▸</span>
+              <a class="post-title" href="#"></a>
+            </div>
+          </div>
+          <div class="post-meta">
+            <small class="post-author"></small>
+            <small class="post-recipient"></small>
+          </div>
           <p class="post-snippet"></p>
         </div>
-        <div class="post-actions">
-          <button class="mark-read"   title="Mark this thread read">✓</button>
-          <button class="mark-unread" title="Mark this thread unread">👁</button>
-          <button class="delete"      title="Hide from Recent">🗑</button>
-          <button class="save"        title="Pin/unpin to Saved">📌</button>
+        <div class="post-toolbar">
+          <div class="workflow-shortcuts"></div>
         </div>
+        <div class="thread-items hidden"></div>
       </div>
+    </template>
+
+    <template id="threadItemTemplate">
+      <article class="thread-item">
+        <div class="thread-item-topline">
+          <div class="thread-item-time"></div>
+          <div class="thread-item-actions"></div>
+        </div>
+        <div class="thread-item-header">
+          <a class="thread-item-title" href="#"></a>
+        </div>
+        <div class="thread-item-meta"></div>
+        <p class="thread-item-body"></p>
+        <div class="post-toolbar thread-item-toolbar">
+          <div class="workflow-shortcuts"></div>
+        </div>
+      </article>
     </template>
   </div>
 
-  <audio id="ding" src="ding.mp3" preload="auto"></audio>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -1,9 +1,4 @@
-
 const capsuleTokenInput = document.getElementById("capsuleToken");
-
-const feedInput = document.getElementById("feedInput");
-const addFeedBtn = document.getElementById("addFeedBtn");
-const feedListUI = document.getElementById("feedListUI");
 const intervalSelect = document.getElementById("intervalSelect");
 const notifyToggle = document.getElementById("notifyToggle");
 const soundToggle = document.getElementById("soundToggle");
@@ -12,110 +7,195 @@ const exportJsonBtn = document.getElementById("exportJson");
 const exportCsvBtn = document.getElementById("exportCsv");
 const saveBtn = document.getElementById("saveBtn");
 const saveStatus = document.getElementById("saveStatus");
-const keyInput        = document.getElementById('openaiKey');
-const summariesToggle = document.getElementById('enableSummaries');
+const keyInput = document.getElementById("openaiKey");
+const summariesToggle = document.getElementById("enableSummaries");
+const emailClientSelect = document.getElementById("emailClient");
+const notifyPriorityThresholdSelect = document.getElementById("notifyPriorityThreshold");
+const showMediumInFeedToggle = document.getElementById("showMediumInFeed");
+const hideLowPriorityInFeedToggle = document.getElementById("hideLowPriorityInFeed");
+const alwaysShowReplyNeededToggle = document.getElementById("alwaysShowReplyNeeded");
+const calendarShortcutModeSelect = document.getElementById("calendarShortcutMode");
+const enableDigestAutomationToggle = document.getElementById("enableDigestAutomation");
+const morningDigestHourSelect = document.getElementById("morningDigestHour");
+const middayDigestHourSelect = document.getElementById("middayDigestHour");
+const endOfDayDigestHourSelect = document.getElementById("endOfDayDigestHour");
 
-let feeds = [];
-
-function updateFeedList() {
-  feedListUI.innerHTML = "";
-  feeds.forEach((feed, index) => {
-    const li = document.createElement("li");
-    li.textContent = feed;
-    const removeBtn = document.createElement("button");
-    removeBtn.textContent = "✖";
-    removeBtn.style.marginLeft = "8px";
-    removeBtn.onclick = () => {
-      feeds.splice(index, 1);
-      updateFeedList();
-    };
-    li.appendChild(removeBtn);
-    feedListUI.appendChild(li);
-  });
+function applyTheme(theme) {
+  document.body.classList.remove("theme-dark", "theme-light");
+  document.body.classList.add(theme === "dark" ? "theme-dark" : "theme-light");
 }
 
-addFeedBtn.addEventListener("click", () => {
-  const newFeed = feedInput.value.trim();
-  if (newFeed && !feeds.includes(newFeed)) {
-    feeds.push(newFeed);
-    feedInput.value = "";
-    updateFeedList();
-  }
-});
+function showStatus(message, isError = false) {
+  saveStatus.textContent = message;
+  saveStatus.classList.toggle("error", isError);
 
-saveBtn.addEventListener("click", () => {
-  const interval = parseInt(intervalSelect.value);
+  window.clearTimeout(showStatus.timeoutId);
+  showStatus.timeoutId = window.setTimeout(() => {
+    saveStatus.textContent = "";
+    saveStatus.classList.remove("error");
+  }, 2500);
+}
+
+function getRemainingSnoozeMinutes(snoozeUntil) {
+  if (!snoozeUntil || snoozeUntil <= Date.now()) {
+    return "0";
+  }
+
+  const remainingMinutes = Math.ceil((snoozeUntil - Date.now()) / 60000);
+  const allowedValues = [15, 30, 60, 120];
+  const selected = allowedValues.find(value => remainingMinutes <= value);
+  return String(selected || 120);
+}
+
+function escapeCsvCell(value) {
+  const stringValue = value == null ? "" : String(value);
+  return `"${stringValue.replace(/"/g, '""')}"`;
+}
+
+async function loadSettings() {
+  const localData = await chrome.storage.local.get([
+    "interval",
+    "notificationsEnabled",
+    "soundEnabled",
+    "snoozeUntil",
+    "enableSummaries",
+    "theme",
+    "capsuleToken",
+    "openaiKey",
+    "emailClient",
+    "notifyPriorityThreshold",
+    "showMediumInFeed",
+    "hideLowPriorityInFeed",
+    "alwaysShowReplyNeeded",
+    "calendarShortcutMode",
+    "enableDigestAutomation",
+    "morningDigestHour",
+    "middayDigestHour",
+    "endOfDayDigestHour"
+  ]);
+
+  applyTheme(localData.theme);
+  capsuleTokenInput.value = localData.capsuleToken || "";
+  keyInput.value = localData.openaiKey || "";
+  intervalSelect.value = String(localData.interval || 1);
+  notifyToggle.checked = localData.notificationsEnabled !== false;
+  soundToggle.checked = localData.soundEnabled !== false;
+  snoozeSelect.value = getRemainingSnoozeMinutes(localData.snoozeUntil || 0);
+  summariesToggle.checked = localData.enableSummaries === true;
+  emailClientSelect.value = localData.emailClient || "default";
+  notifyPriorityThresholdSelect.value = localData.notifyPriorityThreshold || "high";
+  showMediumInFeedToggle.checked = localData.showMediumInFeed !== false;
+  hideLowPriorityInFeedToggle.checked = localData.hideLowPriorityInFeed !== false;
+  alwaysShowReplyNeededToggle.checked = localData.alwaysShowReplyNeeded !== false;
+  calendarShortcutModeSelect.value = localData.calendarShortcutMode === "always" ? "always" : "meeting_only";
+  enableDigestAutomationToggle.checked = localData.enableDigestAutomation === true;
+  morningDigestHourSelect.value = String(Number.isInteger(localData.morningDigestHour) ? localData.morningDigestHour : 8);
+  middayDigestHourSelect.value = String(Number.isInteger(localData.middayDigestHour) ? localData.middayDigestHour : 12);
+  endOfDayDigestHourSelect.value = String(Number.isInteger(localData.endOfDayDigestHour) ? localData.endOfDayDigestHour : 17);
+}
+
+saveBtn.addEventListener("click", async () => {
+  const interval = Number.parseInt(intervalSelect.value, 10);
   const capsuleToken = capsuleTokenInput.value.trim();
+  const openaiKey = keyInput.value.trim();
   const notificationsEnabled = notifyToggle.checked;
   const soundEnabled = soundToggle.checked;
-  const snoozeMinutes = parseInt(snoozeSelect.value);
+  const snoozeMinutes = Number.parseInt(snoozeSelect.value, 10);
   const snoozeUntil = snoozeMinutes > 0 ? Date.now() + snoozeMinutes * 60000 : 0;
+  const emailClient = emailClientSelect.value || "default";
+  const notifyPriorityThreshold = notifyPriorityThresholdSelect.value || "high";
 
-  chrome.storage.local.set({ capsuleToken,
-    feeds,
+  await chrome.storage.local.set({
+    capsuleToken,
+    openaiKey,
     interval,
     notificationsEnabled,
     soundEnabled,
-    snoozeUntil
-  }, () => {
-    chrome.runtime.sendMessage({ type: "settingsUpdated" });
-    saveStatus.textContent = "✅ Settings saved!";
-    setTimeout(() => saveStatus.textContent = "", 2000);
+    snoozeUntil,
+    enableSummaries: summariesToggle.checked,
+    emailClient,
+    notifyPriorityThreshold,
+    showMediumInFeed: showMediumInFeedToggle.checked,
+    hideLowPriorityInFeed: hideLowPriorityInFeedToggle.checked,
+    alwaysShowReplyNeeded: alwaysShowReplyNeededToggle.checked,
+    calendarShortcutMode: calendarShortcutModeSelect.value === "always" ? "always" : "meeting_only",
+    enableDigestAutomation: enableDigestAutomationToggle.checked,
+    morningDigestHour: Number.parseInt(morningDigestHourSelect.value, 10) || 8,
+    middayDigestHour: Number.parseInt(middayDigestHourSelect.value, 10) || 12,
+    endOfDayDigestHour: Number.parseInt(endOfDayDigestHourSelect.value, 10) || 17
   });
-});
 
-chrome.storage.local.get(["feeds", "capsuleToken", "interval", "notificationsEnabled", "soundEnabled", "snoozeUntil"], (data) => {
-  feeds = data.feeds || [];
-  capsuleTokenInput.value = data.capsuleToken || "";
-  intervalSelect.value = data.interval || "1";
-  notifyToggle.checked = data.notificationsEnabled !== false;
-  soundToggle.checked = data.soundEnabled !== false;
-  updateFeedList();
-});
+  await chrome.storage.local.remove(["feeds"]);
 
-// Restore saved values
-chrome.storage.local.get(
-  ['openaiKey','enableSummaries'],
-  ({ openaiKey = '', enableSummaries = false }) => {
-    keyInput.value = openaiKey;
-    summariesToggle.checked = enableSummaries;
+  const response = await chrome.runtime.sendMessage({ type: "settingsUpdated" });
+  if (!response?.ok) {
+    showStatus(response?.error || "Settings saved, but the background worker did not reload cleanly.", true);
+    return;
   }
-);
 
-// Save whenever they change
-keyInput.addEventListener('input', () => {
-  chrome.storage.local.set({ openaiKey: keyInput.value });
+  showStatus("Settings saved.");
 });
 
-summariesToggle.addEventListener('change', () => {
-  chrome.storage.local.set({ enableSummaries: summariesToggle.checked });
+summariesToggle.addEventListener("change", async () => {
+  await chrome.storage.local.set({ enableSummaries: summariesToggle.checked });
 });
 
-exportJsonBtn.addEventListener("click", () => {
-  chrome.storage.local.get(["rssItems"], (data) => {
-    const blob = new Blob([JSON.stringify(data.rssItems || [], null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    downloadFile(url, "rss_feed_export.json");
-  });
+keyInput.addEventListener("input", async () => {
+  await chrome.storage.local.set({ openaiKey: keyInput.value.trim() });
 });
 
-exportCsvBtn.addEventListener("click", () => {
-  chrome.storage.local.get(["rssItems"], (data) => {
-    const rows = [["Title", "Link", "Date", "Read", "Saved"]];
-    (data.rssItems || []).forEach(item => {
-      rows.push([item.title, item.link, item.date, item.read, item.saved]);
-    });
-    const csv = rows.map(r => r.map(cell => `"${cell}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    downloadFile(url, "rss_feed_export.csv");
-  });
+capsuleTokenInput.addEventListener("input", async () => {
+  await chrome.storage.local.set({ capsuleToken: capsuleTokenInput.value.trim() });
+});
+
+exportJsonBtn.addEventListener("click", async () => {
+  const { rssItems = [] } = await chrome.storage.local.get("rssItems");
+  const blob = new Blob([JSON.stringify(rssItems, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  downloadFile(url, "capsule_activity_export.json");
+});
+
+exportCsvBtn.addEventListener("click", async () => {
+  const { rssItems = [] } = await chrome.storage.local.get("rssItems");
+  const rows = [["Title", "Link", "Date", "Read", "Saved", "Deleted", "Summary", "Priority", "Category", "Needs Reply", "Task Needed"]];
+
+  for (const item of rssItems) {
+    rows.push([
+      item.title,
+      item.link,
+      item.date,
+      item.read,
+      item.saved,
+      item.deleted,
+      item.summary || item.snippet || "",
+      item.ai?.priority || "",
+      item.ai?.category || "",
+      item.ai?.needsReply || false,
+      item.ai?.taskNeeded || false
+    ]);
+  }
+
+  const csv = rows
+    .map(row => row.map(escapeCsvCell).join(","))
+    .join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  downloadFile(url, "capsule_activity_export.csv");
 });
 
 function downloadFile(url, filename) {
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
   URL.revokeObjectURL(url);
 }
+
+loadSettings();
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.theme) {
+    applyTheme(changes.theme.newValue);
+  }
+});

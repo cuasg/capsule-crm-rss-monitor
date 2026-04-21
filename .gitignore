@@ -2,3 +2,10 @@ node_modules/
 .DS_Store
 *.log
 mykey1
+.codex
+.env
+.env.*
+*.pem
+*.key
+dist/
+zip/

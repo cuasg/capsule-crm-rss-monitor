@@ -2,153 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Settings - CRM RSS Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings - Capsule Activity Monitor</title>
   <link rel="stylesheet" href="style.css" />
-  <style>
-    /* Options Page Specific Styles */
-    #settingsPage {
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 20px;
-      font-family: sans-serif;
-      color: var(--text-color);
-    }
-    #settingsPage h1 {
-      font-size: 1.5rem;
-      margin-bottom: 1rem;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    /* === Panel Containers === */
-    .option-group {
-      margin-bottom: 1.5rem;
-      padding: 1rem;
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      background: var(--panel-bg);
-      /* ensure anything inside can shrink */
-      min-width: 0;
-    }
-    .option-group legend {
-      font-weight: bold;
-      padding: 0 4px;
-    }
-
-    /* === Rows of Label + Field === */
-    .option-row {
-      display: flex;
-      align-items: center;
-      margin-bottom: 0.75rem;
-      /* critical: allow this row to shrink rather than overflow */
-      min-width: 0;
-      width: 100%;
-    }
-    .option-row label {
-      flex: 0 0 140px;
-    }
-    .option-row input[type="text"],
-    .option-row input[type="password"],
-    .option-row select {
-      /* grow to fill space, but never force‐grow beyond parent */
-      flex: 1 1 auto;
-      min-width: 0;
-      box-sizing: border-box;
-      padding: 6px 8px;
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      background: var(--input-bg);
-      color: var(--input-color);
-      font-size: 0.95rem;
-    }
-
-    /* === Special row for “Add” button + input === */
-    .input-row {
-      display: flex;
-      gap: 8px;
-      /* fill the row’s remaining space, and shrink if needed */
-      flex: 1 1 auto;
-      min-width: 0;
-    }
-    .input-row input {
-      flex: 1 1 auto;
-      min-width: 0;
-      box-sizing: border-box;
-    }
-    .input-row button {
-      /* keep at natural size, don’t let it shrink or grow */
-      flex: 0 0 auto;
-      box-sizing: border-box;
-    }
-
-    /* === Feed URL list === */
-    .feed-list {
-      list-style: none;
-      padding: 0;
-      margin: 0.5rem 0 0;
-    }
-    .feed-list li {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 6px 8px;
-      border-bottom: 1px solid var(--border-color);
-
-    /* allow wrapping */
-      white-space: normal;
-      word-break: break-all;
-      overflow-wrap: anywhere;  
-    }
-    .feed-list li button {
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 1rem;
-      color: var(--muted-text);
-    }
-
-    /* === Buttons & Save Status === */
-    .btn {
-      padding: 8px 16px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      background: var(--primary-color);
-      color: #fff;
-      font-size: 0.95rem;
-      margin-right: 8px;
-      flex-shrink: 0;
-    }
-    #saveBtn {
-      width: 100%;
-    }
-    #saveStatus {
-      margin-top: 0.5rem;
-      font-size: 0.9rem;
-      color: var(--muted-text);
-    }
-  </style>
 </head>
-<body class="theme-light">
-  <div id="settingsPage">
-    <h1>⚙️ Settings</h1>
+<body class="theme-light options-page">
+  <main id="settingsPage">
+    <h1>Settings</h1>
 
     <fieldset class="option-group">
-      <legend>API & Feeds</legend>
+      <legend>Access</legend>
       <div class="option-row">
         <label for="capsuleToken">Capsule API Token</label>
-        <input id="capsuleToken" type="password" placeholder="Paste your token here" />
+        <input id="capsuleToken" type="password" placeholder="Paste your token here" autocomplete="off" />
       </div>
       <div class="option-row">
-        <label for="feedInput">RSS Feed URL</label>
-        <div class="input-row">
-          <input id="feedInput" type="text" placeholder="https://example.com/feed.xml" />
-          <button id="addFeedBtn" class="btn">Add</button>
-        </div>
-      </div >
-      <ul id="feedListUI" class="feed-list"></ul>
+        <label for="openaiKey">OpenAI API Key</label>
+        <input id="openaiKey" type="password" placeholder="sk-..." autocomplete="off" />
+      </div>
+      <p class="option-note">Credentials are stored locally in your Chrome profile so they persist across browser restarts.</p>
     </fieldset>
 
     <fieldset class="option-group">
@@ -165,13 +37,13 @@
           <option value="60">Every 60 minutes</option>
         </select>
       </div>
-      <div class="option-row">
-        <label></label>
-        <label><input type="checkbox" id="notifyToggle" /> Enable Notifications</label>
+      <div class="option-row option-row-checkbox">
+        <label for="notifyToggle">Notifications</label>
+        <label class="checkbox-label"><input type="checkbox" id="notifyToggle" /> Enable notifications</label>
       </div>
-      <div class="option-row">
-        <label></label>
-        <label><input type="checkbox" id="soundToggle" /> Enable Sound Alert</label>
+      <div class="option-row option-row-checkbox">
+        <label for="soundToggle">Sound</label>
+        <label class="checkbox-label"><input type="checkbox" id="soundToggle" /> Play alert sound</label>
       </div>
       <div class="option-row">
         <label for="snoozeSelect">Snooze Notifications</label>
@@ -187,27 +59,101 @@
 
     <fieldset class="option-group">
       <legend>AI Summaries</legend>
-      <div class="option-row">
-        <label for="openaiKey">OpenAI API Key</label>
-        <input id="openaiKey" type="password" placeholder="sk-..." autocomplete="off" />
+      <div class="option-row option-row-checkbox">
+        <label for="enableSummaries">Summaries</label>
+        <label class="checkbox-label"><input type="checkbox" id="enableSummaries" /> Generate AI summaries</label>
       </div>
       <div class="option-row">
-        <label></label>
-        <label><input type="checkbox" id="enableSummaries" /> Enable AI Summaries</label>
+        <label for="emailClient">Email Client</label>
+        <select id="emailClient">
+          <option value="default">Default system email app</option>
+          <option value="gmail">Gmail</option>
+        </select>
+      </div>
+      <p class="option-note">This setting lays the groundwork for reply shortcuts in a later phase.</p>
+    </fieldset>
+
+    <fieldset class="option-group">
+      <legend>Priority Rules</legend>
+      <div class="option-row">
+        <label for="notifyPriorityThreshold">Notify For</label>
+        <select id="notifyPriorityThreshold">
+          <option value="high">High + Critical only</option>
+          <option value="medium">Medium + High + Critical</option>
+          <option value="critical">Critical only</option>
+        </select>
+      </div>
+      <div class="option-row option-row-checkbox">
+        <label for="showMediumInFeed">Medium Priority</label>
+        <label class="checkbox-label"><input type="checkbox" id="showMediumInFeed" /> Show medium priority items in feeds</label>
+      </div>
+      <div class="option-row option-row-checkbox">
+        <label for="hideLowPriorityInFeed">Low Priority</label>
+        <label class="checkbox-label"><input type="checkbox" id="hideLowPriorityInFeed" /> Hide low-priority items from the feed by default</label>
+      </div>
+      <div class="option-row option-row-checkbox">
+        <label for="alwaysShowReplyNeeded">Reply Needed</label>
+        <label class="checkbox-label"><input type="checkbox" id="alwaysShowReplyNeeded" /> Always surface items that appear to need a reply</label>
+      </div>
+    </fieldset>
+
+    <fieldset class="option-group">
+      <legend>Workflow Shortcuts</legend>
+      <div class="option-row">
+        <label for="calendarShortcutMode">Calendar Shortcut</label>
+        <select id="calendarShortcutMode">
+          <option value="meeting_only">Only when AI flags a meeting</option>
+          <option value="always">Always show Google Calendar shortcut</option>
+        </select>
+      </div>
+    </fieldset>
+
+    <fieldset class="option-group">
+      <legend>Digest Automation</legend>
+      <div class="option-row option-row-checkbox">
+        <label for="enableDigestAutomation">Automatic Digests</label>
+        <label class="checkbox-label"><input type="checkbox" id="enableDigestAutomation" /> Generate digests automatically</label>
+      </div>
+      <div class="option-row">
+        <label for="morningDigestHour">Morning Time</label>
+        <select id="morningDigestHour">
+          <option value="7">7:00 AM</option>
+          <option value="8">8:00 AM</option>
+          <option value="9">9:00 AM</option>
+          <option value="10">10:00 AM</option>
+        </select>
+      </div>
+      <div class="option-row">
+        <label for="middayDigestHour">Midday Time</label>
+        <select id="middayDigestHour">
+          <option value="11">11:00 AM</option>
+          <option value="12">12:00 PM</option>
+          <option value="13">1:00 PM</option>
+          <option value="14">2:00 PM</option>
+        </select>
+      </div>
+      <div class="option-row">
+        <label for="endOfDayDigestHour">End-of-Day Time</label>
+        <select id="endOfDayDigestHour">
+          <option value="16">4:00 PM</option>
+          <option value="17">5:00 PM</option>
+          <option value="18">6:00 PM</option>
+          <option value="19">7:00 PM</option>
+        </select>
       </div>
     </fieldset>
 
     <fieldset class="option-group">
       <legend>Export</legend>
-      <div class="option-row">
-        <button id="exportJson" class="btn">Export to JSON</button>
-        <button id="exportCsv" class="btn">Export to CSV</button>
+      <div class="button-row">
+        <button id="exportJson" class="btn" type="button">Export JSON</button>
+        <button id="exportCsv" class="btn" type="button">Export CSV</button>
       </div>
     </fieldset>
 
-    <button id="saveBtn" class="btn">Save Settings</button>
-    <p id="saveStatus"></p>
-  </div>
+    <button id="saveBtn" class="btn btn-primary" type="button">Save Settings</button>
+    <p id="saveStatus" aria-live="polite"></p>
+  </main>
   <script src="options.js"></script>
 </body>
 </html>
