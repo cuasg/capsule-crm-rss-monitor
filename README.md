@@ -1,6 +1,6 @@
 # Capsule CRM Activity Monitor
 
-Chrome extension for reviewing Capsule CRM activity in a browser-side workspace. It pulls recent activity, groups related emails, adds optional AI classification, supports follow-up actions, tracks Capsule tasks, and generates daily digest views.
+Chrome extension for reviewing Capsule CRM activity in a browser-side workspace. It pulls recent activity, groups related emails, adds optional AI classification, supports follow-up actions, tracks Capsule tasks, and generates Day Digest views.
 
 ## Index
 
@@ -24,6 +24,7 @@ This extension is designed to help review Capsule activity without living inside
 - optional AI summaries and priority classification
 - configurable filtering for low-value automated email noise
 - digest views for daily activity review
+- responsive popup and side-panel layouts
 
 ## Key Features
 
@@ -33,7 +34,9 @@ This extension is designed to help review Capsule activity without living inside
 - Reply, AI draft, scheduling, and Capsule task shortcuts
 - Thread expansion for both grouped threads and single-message posts
 - Configurable noise filtering for invoice emails, quote acknowledgements, and order acknowledgements
+- AI draft modal with optional extra context before drafting
 - Day Digest generation with drill-down into referenced activity
+- Clearer empty states and safer fallback behavior for edge cases
 - JSON and CSV export of cached activity
 
 ## Project Files
@@ -81,6 +84,7 @@ No Capsule tenant web URL is hardcoded in the extension. Each user must supply t
 - calendar shortcut behavior
 - digest automation schedule
 - noise filtering strictness
+- mail client selection for reply shortcuts and AI drafts
 
 ### Noise Filtering
 
@@ -122,6 +126,13 @@ Summaries should not:
 - Click the body/card area to expand the thread.
 - Single-message posts can also be expanded to view the full detail pane.
 
+### AI Drafts
+
+- Click `AI Draft` on a post to open a draft modal.
+- Choose to draft immediately or add extra context before sending the prompt to OpenAI.
+- The generated draft opens a fresh compose window with `To`, `CC` when present, `Subject`, and the drafted body.
+- If the preferred clipboard API is unavailable, the extension uses a browser fallback.
+
 ### Filtering
 
 Priority-based hiding is intended for the `Recent` feed. `History` remains available for broader review even when stricter noise filtering is enabled.
@@ -145,6 +156,8 @@ Expanded digest cards support:
 - direct Capsule links when available
 - deletion from the `Digests` view
 
+If a referenced thread cannot be found locally, the extension falls back to opening the related Capsule item directly.
+
 ## Data and Storage
 
 - UI state and cached activity are stored in Chrome extension storage.
@@ -153,6 +166,12 @@ Expanded digest cards support:
 - AI analysis is cached to reduce repeat API usage.
 - Changing core analysis settings may invalidate AI analysis cache and reanalyze existing items.
 - Task counts in the UI are Capsule-focused. Local storage acts as cache, not the source of truth.
+
+The extension is designed to fail soft where possible:
+
+- cached activity remains available when a refresh fails
+- missing setup keeps required actions blocked, but existing stored data can still be reviewed where possible
+- empty views use explicit messages instead of silent blank states
 
 ## Pre-Push Checklist
 
@@ -171,8 +190,12 @@ Recommended real-data checks:
 - task owner filtering
 - thread grouping and expansion
 - noise filtering behavior
+- AI draft with and without extra context
 - digest metrics and drill-down links
+- digest duplicate generation handling
+- digest deletion
 - configured Capsule web URL correctness
+- popup and side-panel layout at different heights
 
 ## Packaging
 

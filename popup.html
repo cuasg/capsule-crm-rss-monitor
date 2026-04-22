@@ -82,6 +82,30 @@
       </div>
     </div>
 
+    <div id="draftContextModal" class="setup-modal hidden" role="dialog" aria-modal="true" aria-labelledby="draftContextTitle">
+      <div class="setup-modal-card draft-context-card">
+        <h2 id="draftContextTitle">AI Draft Reply</h2>
+        <p id="draftContextMessage">Add extra context or direction before generating the draft reply.</p>
+        <div id="draftContextActions" class="button-row">
+          <button id="draftNowBtn" class="btn btn-primary" type="button">Draft Now</button>
+          <button id="showDraftContextBtn" class="btn" type="button">Add Context</button>
+          <button id="cancelDraftContextBtn" class="btn" type="button">Cancel</button>
+        </div>
+        <div id="draftContextForm" class="draft-context-form hidden">
+          <label class="draft-context-label" for="draftContextInput">Extra context</label>
+          <textarea
+            id="draftContextInput"
+            class="draft-context-input"
+            placeholder="Examples: keep it short, mention promised ship date, apologize for delay, avoid offering a discount, ask for confirmation by Friday"
+          ></textarea>
+          <div class="button-row">
+            <button id="submitDraftContextBtn" class="btn btn-primary" type="button">Generate Draft</button>
+            <button id="backDraftContextBtn" class="btn" type="button">Back</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <template id="postTemplate">
       <div class="post">
         <div class="post-toggle" tabindex="-1">

@@ -16,6 +16,9 @@ let digests = [];
 let missingSetupItems = [];
 let allTaskIndexes = { byGuid: new Map(), byLink: new Map() };
 let filteredTaskIndexes = { byGuid: new Map(), byLink: new Map() };
+let draftContextState = {
+  item: null
+};
 let taskSummary = {
   open: 0,
   dueToday: 0,
@@ -311,6 +314,99 @@ function showActionStatus(message, isError = false) {
   }, 3500);
 }
 
+async function writeDraftToClipboard(text) {
+  if (!text) {
+    return false;
+  }
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  const fallback = document.createElement("textarea");
+  fallback.value = text;
+  fallback.setAttribute("readonly", "");
+  fallback.style.position = "absolute";
+  fallback.style.left = "-9999px";
+  document.body.appendChild(fallback);
+  fallback.select();
+  fallback.setSelectionRange(0, fallback.value.length);
+  const copied = document.execCommand("copy");
+  document.body.removeChild(fallback);
+  return copied;
+}
+
+function getFeedEmptyMessage(tab) {
+  if (tab === "digests") {
+    return "No digests generated yet.";
+  }
+
+  if (tab === "tasks") {
+    return currentTaskFilter === "all"
+      ? "No Capsule tasks found."
+      : "No Capsule tasks match the current filter.";
+  }
+
+  if (!posts.length) {
+    return "No cached activity yet. Refresh to load Capsule activity.";
+  }
+
+  if (tab === "recent" && filterSettings.hideLowPriorityInFeed) {
+    return "No visible posts. Low-priority items may be hidden by current filters.";
+  }
+
+  return "No posts found.";
+}
+
+function resetDraftContextModal() {
+  draftContextState.item = null;
+  document.getElementById("draftContextInput").value = "";
+  document.getElementById("draftContextForm").classList.add("hidden");
+  document.getElementById("draftContextActions").classList.remove("hidden");
+  document.getElementById("draftContextModal").classList.add("hidden");
+}
+
+function openDraftContextModal(item) {
+  draftContextState.item = item;
+  document.getElementById("draftContextInput").value = "";
+  document.getElementById("draftContextForm").classList.add("hidden");
+  document.getElementById("draftContextActions").classList.remove("hidden");
+  document.getElementById("draftContextModal").classList.remove("hidden");
+}
+
+function isModalOpen(modalId) {
+  const modal = document.getElementById(modalId);
+  return Boolean(modal && !modal.classList.contains("hidden"));
+}
+
+async function requestDraftReply(item, extraContext = "") {
+  const response = await chrome.runtime.sendMessage({
+    type: "openReplyShortcut",
+    guid: item.guid,
+    mode: "draft",
+    extraContext
+  });
+  if (!response?.ok) {
+    throw new Error(response?.error || "Unable to generate a draft reply.");
+  }
+
+  if (response.mode === "default_draft") {
+    const copied = await writeDraftToClipboard(response.draft || "");
+    if (response.composeUrl) {
+      window.location.href = response.composeUrl;
+    }
+    showActionStatus(
+      copied
+        ? "AI draft copied to clipboard and your email app was opened. Review before sending."
+        : "Your email app was opened with the draft. Clipboard copy was unavailable."
+    );
+    return;
+  }
+
+  showActionStatus("Opened Gmail with an AI draft. Review before sending.");
+}
+
 function shouldShowScheduleShortcut(item) {
   return actionSettings.calendarShortcutMode === "always" || item.ai?.meetingMentioned === true;
 }
@@ -434,25 +530,7 @@ async function handleWorkflowShortcut(item, actionId) {
   }
 
   if (actionId === "draft-reply") {
-    const response = await chrome.runtime.sendMessage({
-      type: "openReplyShortcut",
-      guid: item.guid,
-      mode: "draft"
-    });
-    if (!response?.ok) {
-      throw new Error(response?.error || "Unable to generate a draft reply.");
-    }
-
-    if (response.mode === "default_draft") {
-      await navigator.clipboard.writeText(response.draft || "");
-      if (response.composeUrl) {
-        window.location.href = response.composeUrl;
-      }
-      showActionStatus("AI draft copied to clipboard and your email app was opened. Review before sending.");
-      return;
-    }
-
-    showActionStatus("Opened Gmail with an AI draft. Review before sending.");
+    openDraftContextModal(item);
     return;
   }
 
@@ -541,11 +619,17 @@ function attachWorkflowShortcuts(container, item) {
     button.addEventListener("click", async event => {
       event.preventDefault();
       event.stopPropagation();
+      if (button.disabled) {
+        return;
+      }
+      button.disabled = true;
       try {
         await handleWorkflowShortcut(item, shortcut.id);
       } catch (error) {
         console.error(error);
         showActionStatus(error.message || "Action failed.", true);
+      } finally {
+        button.disabled = false;
       }
     });
     target.appendChild(button);
@@ -926,6 +1010,15 @@ function setActiveTab(tabName) {
   renderPosts(tabName);
 }
 
+function escapeAttributeSelector(value = "") {
+  const text = String(value);
+  if (globalThis.CSS?.escape) {
+    return CSS.escape(text);
+  }
+
+  return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 function createDigestReferenceList(title, items, onSelect) {
   const section = document.createElement("section");
   section.className = "digest-section";
@@ -990,10 +1083,15 @@ async function focusDigestReference(reference) {
   }
   setActiveTab("history");
   await loadPosts();
-  const selector = reference.threadKey ? `.post[data-thread-key="${CSS.escape(reference.threadKey)}"]` : null;
+  const selector = reference.threadKey ? `.post[data-thread-key="${escapeAttributeSelector(reference.threadKey)}"]` : null;
   const target = selector ? document.querySelector(selector) : null;
   if (target) {
     target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    return;
+  }
+
+  if (reference.link) {
+    await chrome.runtime.sendMessage({ type: "openEntry", url: reference.link });
   }
 }
 
@@ -1019,6 +1117,10 @@ function createDigestCard(digest) {
   deleteButton.addEventListener("click", async event => {
     event.preventDefault();
     event.stopPropagation();
+    if (deleteButton.disabled) {
+      return;
+    }
+    deleteButton.disabled = true;
     try {
       const response = await chrome.runtime.sendMessage({ type: "deleteDigest", digestId: digest.id });
       if (!response?.ok) {
@@ -1032,6 +1134,8 @@ function createDigestCard(digest) {
     } catch (error) {
       console.error(error);
       showActionStatus(error.message || "Digest deletion failed.", true);
+    } finally {
+      deleteButton.disabled = false;
     }
   });
   title.append(titleText, titleTime, deleteButton);
@@ -1200,6 +1304,10 @@ function createTaskCard(task) {
   completeButton.addEventListener("click", async event => {
     event.preventDefault();
     event.stopPropagation();
+    if (completeButton.disabled) {
+      return;
+    }
+    completeButton.disabled = true;
     try {
       const response = await chrome.runtime.sendMessage({
         type: "completeLocalTask",
@@ -1213,6 +1321,8 @@ function createTaskCard(task) {
     } catch (error) {
       console.error(error);
       showActionStatus(error.message || "Task completion failed.", true);
+    } finally {
+      completeButton.disabled = false;
     }
   });
   actions.appendChild(completeButton);
@@ -1248,7 +1358,7 @@ function renderPosts(tab) {
     feedList.innerHTML = "";
 
     if (!digests.length) {
-      feedList.innerHTML = "<p class='empty'>No digests generated yet.</p>";
+      feedList.innerHTML = `<p class='empty'>${getFeedEmptyMessage(tab)}</p>`;
       return;
     }
 
@@ -1264,7 +1374,7 @@ function renderPosts(tab) {
     feedList.innerHTML = "";
 
     if (!visibleTasks.length) {
-      feedList.innerHTML = "<p class='empty'>No Capsule tasks found for this filter.</p>";
+      feedList.innerHTML = `<p class='empty'>${getFeedEmptyMessage(tab)}</p>`;
       return;
     }
 
@@ -1283,7 +1393,7 @@ function renderPosts(tab) {
   const visible = grouped.filter(thread => matchesSearch(thread, searchTerm));
 
   if (!visible.length) {
-    feedList.innerHTML = "<p class='empty'>No posts found.</p>";
+    feedList.innerHTML = `<p class='empty'>${getFeedEmptyMessage(tab)}</p>`;
     return;
   }
 
@@ -1590,6 +1700,85 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("settingsBtn").addEventListener("click", () => chrome.runtime.openOptionsPage());
   document.getElementById("openSettingsBtn").addEventListener("click", () => chrome.runtime.openOptionsPage());
   document.getElementById("retrySetupBtn").addEventListener("click", loadPosts);
+  document.getElementById("draftNowBtn").addEventListener("click", async () => {
+    const item = draftContextState.item;
+    const button = document.getElementById("draftNowBtn");
+    if (!item) {
+      resetDraftContextModal();
+      return;
+    }
+
+    if (button.disabled) {
+      return;
+    }
+    button.disabled = true;
+    try {
+      await requestDraftReply(item);
+      resetDraftContextModal();
+    } catch (error) {
+      console.error(error);
+      showActionStatus(error.message || "Unable to generate a draft reply.", true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  document.getElementById("showDraftContextBtn").addEventListener("click", () => {
+    document.getElementById("draftContextActions").classList.add("hidden");
+    document.getElementById("draftContextForm").classList.remove("hidden");
+    document.getElementById("draftContextInput").focus();
+  });
+  document.getElementById("cancelDraftContextBtn").addEventListener("click", resetDraftContextModal);
+  document.getElementById("backDraftContextBtn").addEventListener("click", () => {
+    document.getElementById("draftContextForm").classList.add("hidden");
+    document.getElementById("draftContextActions").classList.remove("hidden");
+  });
+  document.getElementById("submitDraftContextBtn").addEventListener("click", async () => {
+    const item = draftContextState.item;
+    const button = document.getElementById("submitDraftContextBtn");
+    if (!item) {
+      resetDraftContextModal();
+      return;
+    }
+
+    if (button.disabled) {
+      return;
+    }
+    button.disabled = true;
+    try {
+      const extraContext = document.getElementById("draftContextInput").value.trim();
+      await requestDraftReply(item, extraContext);
+      resetDraftContextModal();
+    } catch (error) {
+      console.error(error);
+      showActionStatus(error.message || "Unable to generate a draft reply.", true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  document.getElementById("draftContextModal").addEventListener("click", event => {
+    if (event.target.id === "draftContextModal") {
+      resetDraftContextModal();
+    }
+  });
+  document.getElementById("setupModal").addEventListener("click", event => {
+    if (event.target.id === "setupModal" && !missingSetupItems.length) {
+      document.getElementById("setupModal").classList.add("hidden");
+    }
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    if (isModalOpen("draftContextModal")) {
+      resetDraftContextModal();
+      return;
+    }
+
+    if (isModalOpen("setupModal") && !missingSetupItems.length) {
+      document.getElementById("setupModal").classList.add("hidden");
+    }
+  });
   document.getElementById("themeToggle").addEventListener("click", toggleTheme);
   document.getElementById("refreshBtn").addEventListener("click", refreshPosts);
   document.getElementById("markAllReadBtn").addEventListener("click", markAllRead);

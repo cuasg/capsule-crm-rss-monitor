@@ -338,6 +338,34 @@ nav {
   color: var(--muted-text);
 }
 
+.draft-context-card {
+  max-width: 420px;
+}
+
+.draft-context-form {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.draft-context-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.draft-context-input {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--input-color);
+  font: inherit;
+  line-height: 1.4;
+}
+
 .setup-modal-missing {
   margin: 12px 0 14px;
   font-size: 13px;

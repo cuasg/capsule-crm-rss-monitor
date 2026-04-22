@@ -1,8 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Capsule CRM Activity Monitor",
+  "short_name": "Capsule Monitor",
   "description": "Tracks Capsule CRM activity with refresh, notifications, a side panel, and optional AI summaries.",
   "version": "2.0",
+  "minimum_chrome_version": "114",
   "action": {
     "default_title": "Capsule Activity Monitor",
     "default_popup": "popup.html",

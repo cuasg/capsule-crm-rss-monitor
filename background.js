@@ -635,11 +635,12 @@ function getReplyClientLabel(emailClient = "default") {
   return emailClient === "gmail" ? "gmail" : "default";
 }
 
-function buildReplyDraftCacheKey(item, emailClient) {
+function buildReplyDraftCacheKey(item, emailClient, extraContext = "") {
   return [
     item.ai?.hash || "",
     slugifyTaskValue(item.title || ""),
     slugifyTaskValue(item.author || ""),
+    slugifyTaskValue(extraContext).slice(0, 120),
     getReplyClientLabel(emailClient),
     `v${DRAFT_REPLY_VERSION}`
   ].join(":");
@@ -665,7 +666,7 @@ function getReplyRecipients(item) {
   return { to, cc };
 }
 
-function buildMailtoUrl(item, body = "") {
+function buildMailtoUrl(item, body = "", subjectOverride = "") {
   const params = new URLSearchParams();
   const recipients = getReplyRecipients(item);
   if (recipients.to) {
@@ -674,8 +675,8 @@ function buildMailtoUrl(item, body = "") {
   if (recipients.cc.length) {
     params.set("cc", recipients.cc.join(","));
   }
-  if (item.title) {
-    params.set("subject", item.title);
+  if (subjectOverride || item.title) {
+    params.set("subject", subjectOverride || item.title);
   }
   if (body) {
     params.set("body", body);
@@ -685,12 +686,12 @@ function buildMailtoUrl(item, body = "") {
   return query ? `mailto:?${query}` : "mailto:";
 }
 
-function buildGmailComposeUrl(item, body = "") {
+function buildGmailComposeUrl(item, body = "", subjectOverride = "") {
   const recipients = getReplyRecipients(item);
   const params = new URLSearchParams({
     view: "cm",
     fs: "1",
-    su: item.title || ""
+    su: subjectOverride || item.title || ""
   });
 
   if (recipients.to) {
@@ -1557,7 +1558,7 @@ async function createLocalTask(item) {
   });
 }
 
-async function generateReplyDraft(item) {
+async function generateReplyDraft(item, extraContext = "") {
   const {
     openaiKey = "",
     replyDraftCache = {}
@@ -1571,7 +1572,8 @@ async function generateReplyDraft(item) {
   }
 
   const { emailClient = "default" } = await getSettings();
-  const cacheKey = buildReplyDraftCacheKey(item, emailClient);
+  const normalizedExtraContext = normalizeWhitespace(extraContext);
+  const cacheKey = buildReplyDraftCacheKey(item, emailClient, normalizedExtraContext);
   const cached = replyDraftCache[cacheKey];
   if (cached?.version === DRAFT_REPLY_VERSION && cached?.draft) {
     return cached;
@@ -1593,6 +1595,7 @@ async function generateReplyDraft(item) {
             "Return JSON only with keys: subject, draft. " +
             "The draft must be short, professional, and safe to review before sending. " +
             "Format the draft as a real email with line breaks: greeting, 1-3 short body paragraphs, and a simple closing. " +
+            "If additional context is supplied, use it as drafting guidance. " +
             "Do not claim actions were taken unless stated in the source. Do not return one dense paragraph."
         },
         {
@@ -1603,7 +1606,8 @@ async function generateReplyDraft(item) {
             recipients: item.recipients,
             summary: item.summary,
             body: item.body,
-            ai: item.ai || {}
+            ai: item.ai || {},
+            extra_context: normalizedExtraContext
           })
         }
       ],
@@ -2068,7 +2072,7 @@ function getItemByGuid(rssItems, guid) {
   return rssItems.find(item => String(item.guid) === String(guid)) || null;
 }
 
-async function openReplyShortcut(guid, mode = "plain") {
+async function openReplyShortcut(guid, mode = "plain", extraContext = "") {
   const { rssItems = [] } = await chrome.storage.local.get("rssItems");
   const item = getItemByGuid(rssItems, guid);
   if (!item) {
@@ -2077,16 +2081,16 @@ async function openReplyShortcut(guid, mode = "plain") {
 
   const settings = await getSettings();
   if (mode === "draft") {
-    const draftPayload = await generateReplyDraft(item);
+    const draftPayload = await generateReplyDraft(item, extraContext);
     if (settings.emailClient === "gmail") {
-      await openExternalUrl(buildGmailComposeUrl(item, draftPayload.draft));
+      await openExternalUrl(buildGmailComposeUrl(item, draftPayload.draft, draftPayload.subject));
       return { ok: true, mode: "gmail_draft", draft: draftPayload.draft };
     }
 
     return {
       ok: true,
       mode: "default_draft",
-      composeUrl: buildMailtoUrl(item, draftPayload.draft),
+      composeUrl: buildMailtoUrl(item, draftPayload.draft, draftPayload.subject),
       draft: draftPayload.draft
     };
   }
@@ -2216,7 +2220,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "openReplyShortcut" && msg.guid) {
-    openReplyShortcut(msg.guid, msg.mode || "plain")
+    openReplyShortcut(msg.guid, msg.mode || "plain", msg.extraContext || "")
       .then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error.message || "Unable to open reply action." }));
     return true;
