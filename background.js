@@ -293,6 +293,15 @@ function buildAnalysisFingerprint(item) {
   ].join("\n");
 }
 
+function getAnalysisTuningFingerprint(settings = {}) {
+  return JSON.stringify({
+    noiseFilterStrength: settings.noiseFilterStrength || "balanced",
+    deprioritizeInvoiceEmails: settings.deprioritizeInvoiceEmails !== false,
+    deprioritizeOrderAcknowledgements: settings.deprioritizeOrderAcknowledgements !== false,
+    deprioritizeQuoteAcknowledgements: settings.deprioritizeQuoteAcknowledgements !== false
+  });
+}
+
 async function hashAnalysisFingerprint(fingerprint) {
   const encoded = new TextEncoder().encode(fingerprint);
   const digest = await crypto.subtle.digest("SHA-256", encoded);
@@ -317,7 +326,7 @@ function isReplySubject(title = "") {
   return /^(?:\s*(?:re|fwd)\s*[:\-]\s*)+/i.test(title);
 }
 
-function detectHeuristicSignals(item) {
+function detectHeuristicSignals(item, settings = {}) {
   const subject = normalizeWhitespace(item.title).toLowerCase();
   const body = normalizeWhitespace(item.body).toLowerCase();
   const author = normalizeWhitespace(item.author).toLowerCase();
@@ -335,6 +344,34 @@ function detectHeuristicSignals(item) {
     "receipt confirmation",
     "shipment notification"
   ];
+  const invoiceCues = [
+    "invoice",
+    "billing notice",
+    "payment receipt",
+    "remittance",
+    "statement attached"
+  ];
+  const orderAcknowledgementCues = [
+    "quote acknowledgment",
+    "quote acknowledgement",
+    "quote received",
+    "quote receipt",
+    "request for quote received",
+    "rfq received",
+    "order received",
+    "shipping update"
+  ];
+  if (settings.deprioritizeInvoiceEmails !== false) {
+    automationCues.push(...invoiceCues);
+  }
+  if (settings.deprioritizeOrderAcknowledgements !== false || settings.deprioritizeQuoteAcknowledgements !== false) {
+    automationCues.push(...orderAcknowledgementCues.filter(cue => {
+      if (cue.includes("quote") || cue.includes("rfq")) {
+        return settings.deprioritizeQuoteAcknowledgements !== false;
+      }
+      return settings.deprioritizeOrderAcknowledgements !== false;
+    }));
+  }
   const actionCues = [
     "?",
     "can you",
@@ -353,6 +390,10 @@ function detectHeuristicSignals(item) {
     "customer asked",
     "let me know"
   ];
+  const noiseFilterStrength = settings.noiseFilterStrength || "balanced";
+  if (noiseFilterStrength === "strict" || noiseFilterStrength === "aggressive") {
+    actionCues.push("please advise", "confirm", "review and respond");
+  }
   const negativeCues = [
     "urgent",
     "asap",
@@ -367,10 +408,15 @@ function detectHeuristicSignals(item) {
   const matchedAutomationCues = automationCues.filter(cue => combined.includes(cue));
   const matchedActionCues = actionCues.filter(cue => combined.includes(cue));
   const matchedNegativeCues = negativeCues.filter(cue => combined.includes(cue));
+  const explicitQuestion = /[?]/.test(combined);
+  const containsInvoiceCue = invoiceCues.some(cue => combined.includes(cue));
+  const containsQuoteCue = orderAcknowledgementCues.some(cue => (cue.includes("quote") || cue.includes("rfq")) && combined.includes(cue));
+  const containsOrderAckCue = orderAcknowledgementCues.some(cue => !cue.includes("quote") && !cue.includes("rfq") && combined.includes(cue));
   const humanReplyLikely = (
     (isReplySubject(item.title) && !automatedSender) ||
     matchedActionCues.length > 0 ||
-    matchedNegativeCues.length > 0
+    matchedNegativeCues.length > 0 ||
+    explicitQuestion
   );
 
   return {
@@ -378,16 +424,29 @@ function detectHeuristicSignals(item) {
     matchedAutomationCues,
     matchedActionCues,
     matchedNegativeCues,
-    humanReplyLikely
+    humanReplyLikely,
+    explicitQuestion,
+    containsInvoiceCue,
+    containsQuoteCue,
+    containsOrderAckCue
   };
 }
 
-function getHeuristicAnalysis(item, analysisHash = "") {
+function getHeuristicAnalysis(item, analysisHash = "", settings = {}) {
   const fallback = getFallbackAnalysis(item);
-  const signals = detectHeuristicSignals(item);
+  const signals = detectHeuristicSignals(item, settings);
   const summary = item.snippet || fallback.summary;
+  const noiseFilterStrength = settings.noiseFilterStrength || "balanced";
+  const aggressiveNoiseSuppression = noiseFilterStrength === "aggressive";
+  const strictNoiseSuppression = noiseFilterStrength === "strict" || aggressiveNoiseSuppression;
+  const looksLikeCommercialNoise = (
+    signals.containsInvoiceCue ||
+    signals.containsQuoteCue ||
+    signals.containsOrderAckCue ||
+    signals.matchedAutomationCues.length > 0
+  );
 
-  if (signals.matchedAutomationCues.length > 0 && !signals.humanReplyLikely) {
+  if (looksLikeCommercialNoise && !signals.humanReplyLikely) {
     return {
       ...fallback,
       summary,
@@ -395,6 +454,29 @@ function getHeuristicAnalysis(item, analysisHash = "") {
       priorityReason: "Likely automated acknowledgement with no clear follow-up request.",
       category: "automated_update",
       signals: cleanStringArray(["automated_update", ...signals.matchedAutomationCues.map(value => value.replace(/[^a-z0-9]+/g, "_"))]),
+      raw: {
+        mode: "heuristic",
+        automatedSender: signals.automatedSender,
+        matchedAutomationCues: signals.matchedAutomationCues
+      },
+      hash: analysisHash,
+      version: AI_ANALYSIS_VERSION,
+      analyzedAt: new Date().toISOString(),
+      model: HEURISTIC_MODEL
+    };
+  }
+
+  if (strictNoiseSuppression && looksLikeCommercialNoise && !signals.matchedNegativeCues.length && !signals.explicitQuestion) {
+    return {
+      ...fallback,
+      summary,
+      priority: aggressiveNoiseSuppression ? "low" : "medium",
+      priorityReason: "Commercial acknowledgement or billing message without a clear request for follow-up.",
+      category: "automated_update",
+      signals: cleanStringArray([
+        "commercial_noise",
+        ...signals.matchedAutomationCues.map(value => value.replace(/[^a-z0-9]+/g, "_"))
+      ]),
       raw: {
         mode: "heuristic",
         automatedSender: signals.automatedSender,
@@ -925,7 +1007,7 @@ function getDigestTypeLabel(type) {
       return "Midday Digest";
     case "end_of_day":
     default:
-      return "End-of-Day Digest";
+      return "Day Digest";
   }
 }
 
@@ -974,6 +1056,21 @@ function hasDigestForDate(digests, type, dateKey) {
   return digests.some(digest => digest.type === type && digest.dateKey === dateKey);
 }
 
+function isDigestRecordCurrent(digest) {
+  return Boolean(
+    digest &&
+    digest.typeLabel &&
+    digest.metrics &&
+    digest.references &&
+    Array.isArray(digest.references.quotesSent) &&
+    Array.isArray(digest.references.orderAcknowledgements) &&
+    Array.isArray(digest.references.complaintsOpen) &&
+    Array.isArray(digest.references.complaintsClosed) &&
+    Array.isArray(digest.references.replyNeeded) &&
+    Array.isArray(digest.references.topContacts)
+  );
+}
+
 function buildDigestCounts(items) {
   return items.reduce((counts, item) => {
     const priority = item.ai?.priority || "medium";
@@ -997,6 +1094,154 @@ function buildDigestCounts(items) {
       critical: 0
     }
   });
+}
+
+function groupDigestThreads(items) {
+  const sorted = [...items].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const threadMap = new Map();
+
+  for (const item of sorted) {
+    const key = getThreadKey(item);
+    const existing = threadMap.get(key);
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+
+    threadMap.set(key, {
+      key,
+      latest: item,
+      items: [item]
+    });
+  }
+
+  return [...threadMap.values()].map(thread => ({
+    ...thread,
+    items: [...thread.items].sort((a, b) => new Date(b.date) - new Date(a.date))
+  }));
+}
+
+function buildDigestReference(thread, extra = {}) {
+  const latest = thread.latest || {};
+  return {
+    guid: latest.guid || "",
+    threadKey: thread.key,
+    title: latest.title || "Capsule activity",
+    contact: latest.recipientText || latest.author || "",
+    link: latest.link || "",
+    date: latest.date || "",
+    priority: latest.ai?.priority || "medium",
+    category: latest.ai?.category || "",
+    ...extra
+  };
+}
+
+function buildDigestMetrics(items, tasks) {
+  const threads = groupDigestThreads(items);
+  const today = new Date().toISOString().slice(0, 10);
+  const activeTasks = tasks.filter(task => task.status !== "completed" && task.status !== "dismissed" && task.status !== "pending");
+  const activeTaskThreadKeys = new Set(activeTasks.map(task => task.threadKey).filter(Boolean));
+  const activeTaskSourceGuids = new Set(activeTasks.map(task => task.sourceGuid).filter(Boolean));
+  const topContacts = new Map();
+  const metrics = {
+    threadCount: threads.length,
+    contactsTouched: 0,
+    quotesSent: 0,
+    orderAcknowledgements: 0,
+    customerComplaints: {
+      open: 0,
+      closed: 0
+    },
+    replyNeededThreads: 0,
+    highPriorityThreads: 0
+  };
+  const references = {
+    quotesSent: [],
+    orderAcknowledgements: [],
+    complaintsOpen: [],
+    complaintsClosed: [],
+    replyNeeded: [],
+    topContacts: []
+  };
+
+  const quoteSentCues = ["quote sent", "quotation", "proposal", "pricing attached", "attached quote", "attached proposal"];
+  const quoteAckCues = ["quote acknowledgment", "quote acknowledgement", "quote receipt", "quote received", "rfq received"];
+  const orderAckCues = ["order acknowledgment", "order acknowledgement", "order confirmation", "receipt confirmation", "shipment notification", "shipping update"];
+  const complaintCues = ["complaint", "issue", "problem", "wrong", "delay", "late", "damaged", "cancel", "not working", "incorrect"];
+  const resolvedCues = ["resolved", "taken care of", "fixed", "completed", "closed", "thank you", "thanks for resolving"];
+
+  for (const thread of threads) {
+    const latest = thread.latest;
+    const combined = normalizeWhitespace(thread.items.map(item => [item.title, item.body, item.summary].filter(Boolean).join(" ")).join(" ")).toLowerCase();
+    const activeTaskExists = activeTaskThreadKeys.has(thread.key) || thread.items.some(item => activeTaskSourceGuids.has(item.guid));
+    const needsReply = thread.items.some(item => item.ai?.needsReply === true);
+    const highPriority = thread.items.some(item => getPriorityRank(item.ai?.priority) >= getPriorityRank("high"));
+    const complaintSignal = thread.items.some(item => ["customer_request", "escalation", "order_change"].includes(item.ai?.category || ""));
+    const hasComplaint = complaintSignal || complaintCues.some(cue => combined.includes(cue));
+    const looksResolved = resolvedCues.some(cue => combined.includes(cue));
+    const complaintOpen = hasComplaint && (activeTaskExists || needsReply || highPriority) && !looksResolved;
+    const hasQuoteAck = quoteAckCues.some(cue => combined.includes(cue));
+    const hasQuoteSent = !hasQuoteAck && (quoteSentCues.some(cue => combined.includes(cue)) || ((latest.ai?.category || "") === "quote_request" && !needsReply));
+    const hasOrderAcknowledgement = orderAckCues.some(cue => combined.includes(cue)) || (combined.includes("order") && combined.includes("acknowledg"));
+    const contactName = latest.recipientText || latest.author || "Unknown contact";
+    const contactEntry = topContacts.get(contactName) || {
+      name: contactName,
+      count: 0,
+      latestAt: "",
+      link: latest.link || "",
+      threadKey: thread.key,
+      guid: latest.guid || ""
+    };
+    contactEntry.count += thread.items.length;
+    if (!contactEntry.latestAt || new Date(latest.date).getTime() > new Date(contactEntry.latestAt).getTime()) {
+      contactEntry.latestAt = latest.date || "";
+      contactEntry.link = latest.link || contactEntry.link;
+      contactEntry.threadKey = thread.key;
+      contactEntry.guid = latest.guid || contactEntry.guid;
+    }
+    topContacts.set(contactName, contactEntry);
+
+    if (needsReply) {
+      metrics.replyNeededThreads += 1;
+      references.replyNeeded.push(buildDigestReference(thread, { status: activeTaskExists ? "tracked" : "reply_needed" }));
+    }
+
+    if (highPriority) {
+      metrics.highPriorityThreads += 1;
+    }
+
+    if (hasQuoteSent) {
+      metrics.quotesSent += 1;
+      references.quotesSent.push(buildDigestReference(thread));
+    }
+
+    if (hasOrderAcknowledgement) {
+      metrics.orderAcknowledgements += 1;
+      references.orderAcknowledgements.push(buildDigestReference(thread));
+    }
+
+    if (hasComplaint) {
+      if (complaintOpen) {
+        metrics.customerComplaints.open += 1;
+        references.complaintsOpen.push(buildDigestReference(thread, { status: "open" }));
+      } else {
+        metrics.customerComplaints.closed += 1;
+        references.complaintsClosed.push(buildDigestReference(thread, { status: looksResolved ? "closed" : "monitoring" }));
+      }
+    }
+  }
+
+  metrics.contactsTouched = topContacts.size;
+  references.topContacts = [...topContacts.values()]
+    .sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      return new Date(b.latestAt || today).getTime() - new Date(a.latestAt || today).getTime();
+    })
+    .slice(0, 5);
+
+  return { metrics, references, threads };
 }
 
 function buildDigestSignals(items) {
@@ -1027,18 +1272,19 @@ function buildDigestSignals(items) {
   return { topCategories, topSignals };
 }
 
-function buildLocalDigestText(items, taskSummary) {
+function buildLocalDigestText(items, taskSummary, digestMetrics) {
   const counts = buildDigestCounts(items);
   const signals = buildDigestSignals(items);
+  const metrics = digestMetrics.metrics;
   const topCategoryText = signals.topCategories
     .map(entry => `${entry.count} ${entry.name.replace(/_/g, " ")}`)
     .join(", ");
 
   const parts = [
-    `End of day: ${counts.total} updates reviewed.`,
-    `${counts.byPriority.high + counts.byPriority.critical} high-priority items surfaced.`,
-    `${counts.replyNeeded} items appeared to need a reply.`,
-    `${taskSummary.open} open tasks remain, with ${taskSummary.dueToday} due today and ${taskSummary.overdue} overdue.`
+    `Day digest: ${counts.total} updates across ${metrics.contactsTouched} contacts and ${metrics.threadCount} active threads.`,
+    `${metrics.quotesSent} quotes were sent and ${metrics.orderAcknowledgements} order acknowledgements landed today.`,
+    `${metrics.customerComplaints.open} customer complaints look open and ${metrics.customerComplaints.closed} appear closed.`,
+    `${metrics.replyNeededThreads} threads still appear to need a reply. ${taskSummary.open} open tasks remain, with ${taskSummary.dueToday} due today and ${taskSummary.overdue} overdue.`
   ];
 
   if (topCategoryText) {
@@ -1048,24 +1294,25 @@ function buildLocalDigestText(items, taskSummary) {
   return parts.join(" ");
 }
 
-function buildDigestFallbackText(type, items, taskSummary) {
+function buildDigestFallbackText(type, items, taskSummary, digestMetrics) {
   const prefix = {
     morning: "Morning digest",
     midday: "Midday digest",
-    end_of_day: "End of day"
+    end_of_day: "Day digest"
   }[type] || "Digest";
   const counts = buildDigestCounts(items);
+  const metrics = digestMetrics.metrics;
   const parts = [
-    `${prefix}: ${counts.total} updates in this window.`,
-    `${counts.byPriority.high + counts.byPriority.critical} high-priority items surfaced.`,
-    `${counts.replyNeeded} items appeared to need a reply.`,
-    `${taskSummary.open} open tasks remain, with ${taskSummary.dueToday} due today and ${taskSummary.overdue} overdue.`
+    `${prefix}: ${counts.total} updates across ${metrics.threadCount} active threads.`,
+    `${metrics.quotesSent} quotes were sent and ${metrics.orderAcknowledgements} order acknowledgements were received.`,
+    `${metrics.customerComplaints.open} complaints appear open and ${metrics.customerComplaints.closed} appear closed.`,
+    `${metrics.replyNeededThreads} threads appear to need a reply. ${taskSummary.open} open tasks remain, with ${taskSummary.dueToday} due today and ${taskSummary.overdue} overdue.`
   ];
 
   return parts.join(" ");
 }
 
-async function maybeGenerateDigestNarrative(items, taskSummary, fallbackText) {
+async function maybeGenerateDigestNarrative(items, taskSummary, fallbackText, digestMetrics) {
   const { openaiKey = "", enableSummaries = false } = await chrome.storage.local.get([
     "openaiKey",
     "enableSummaries"
@@ -1100,13 +1347,14 @@ async function maybeGenerateDigestNarrative(items, taskSummary, fallbackText) {
           {
             role: "system",
             content:
-              "You write concise end-of-day CRM digest summaries for inside sales and customer service teams. " +
-              "Return JSON only with a single key `digest`. Keep it to 2-4 short sentences focused on what matters and what remains open."
+              "You write concise CRM daily digest summaries for sales and customer service teams. " +
+              "Return JSON only with a single key `digest`. Keep it to 3-5 short sentences focused on activity, quotes, order acknowledgements, complaints, open items, and follow-up pressure."
           },
           {
             role: "user",
             content: JSON.stringify({
               taskSummary,
+              digestMetrics: digestMetrics.metrics,
               items: payload
             })
           }
@@ -1150,9 +1398,9 @@ async function generateDigestByType(type = "end_of_day") {
     ]);
     const now = new Date();
     const { dateKey } = getLocalDateParts(now);
-    if (hasDigestForDate(digests, type, dateKey)) {
-      const existing = digests.find(digest => digest.type === type && digest.dateKey === dateKey) || null;
-      return { ok: true, digest: existing, digests, skipped: "duplicate" };
+    const existing = digests.find(digest => digest.type === type && digest.dateKey === dateKey) || null;
+    if (existing && isDigestRecordCurrent(existing)) {
+      return { ok: true, digest: existing, digests, skipped: "duplicate", created: false };
     }
 
     const windowStart = getDigestWindowStart(now, type);
@@ -1164,7 +1412,7 @@ async function generateDigestByType(type = "end_of_day") {
       .sort((a, b) => new Date(b.date) - new Date(a.date));
 
     if (!recentItems.length) {
-      return { ok: true, digest: null, digests, skipped: "empty" };
+      return { ok: true, digest: null, digests, skipped: "empty", created: false };
     }
 
     const activeTasks = capsuleTasks.map(task => {
@@ -1183,8 +1431,9 @@ async function generateDigestByType(type = "end_of_day") {
     const taskSummary = getTaskSummary(activeTasks);
     const counts = buildDigestCounts(recentItems);
     const signals = buildDigestSignals(recentItems);
-    const fallbackText = buildDigestFallbackText(type, recentItems, taskSummary);
-    const narrative = await maybeGenerateDigestNarrative(recentItems, taskSummary, fallbackText);
+    const digestMetrics = buildDigestMetrics(recentItems, activeTasks);
+    const fallbackText = buildDigestFallbackText(type, recentItems, taskSummary, digestMetrics);
+    const narrative = await maybeGenerateDigestNarrative(recentItems, taskSummary, fallbackText, digestMetrics);
     const digest = {
       id: `digest_${Date.now()}`,
       type,
@@ -1198,23 +1447,44 @@ async function generateDigestByType(type = "end_of_day") {
       taskSummary,
       counts,
       signals,
+      metrics: digestMetrics.metrics,
+      references: digestMetrics.references,
       text: narrative.text,
       source: narrative.source
     };
     const latest = await chrome.storage.local.get("digests");
-    const nextDigests = trimDigests([digest, ...(latest.digests || [])]);
+    const nextDigests = trimDigests([
+      digest,
+      ...(latest.digests || []).filter(entry => !(entry.type === type && entry.dateKey === dateKey))
+    ]);
     await chrome.storage.local.set({ digests: nextDigests });
     await setRuntimeStatus({
       level: "info",
       source: "digests",
       message: `${digest.typeLabel} generated successfully.`
     });
-    return { ok: true, digest, digests: nextDigests };
+    return { ok: true, digest, digests: nextDigests, created: true };
   });
 }
 
 async function generateEndOfDayDigest() {
   return generateDigestByType("end_of_day");
+}
+
+async function deleteDigestById(digestId) {
+  const { digests = [] } = await chrome.storage.local.get("digests");
+  const nextDigests = digests.filter(digest => digest.id !== digestId);
+  if (digests.length === nextDigests.length) {
+    return { ok: false, error: "Digest not found.", deleted: false, digests };
+  }
+
+  await chrome.storage.local.set({ digests: nextDigests });
+  await setRuntimeStatus({
+    level: "info",
+    source: "digests",
+    message: "Digest deleted."
+  });
+  return { ok: true, digests: nextDigests, deleted: true };
 }
 
 async function generateScheduledDigestsIfDue() {
@@ -1373,12 +1643,26 @@ async function analyzeBatch(items) {
   const {
     enableSummaries = false,
     openaiKey = "",
-    aiAnalysisCache = {}
+    aiAnalysisCache = {},
+    noiseFilterStrength = "balanced",
+    deprioritizeInvoiceEmails = true,
+    deprioritizeOrderAcknowledgements = true,
+    deprioritizeQuoteAcknowledgements = true
   } = await chrome.storage.local.get([
     "enableSummaries",
     "openaiKey",
-    "aiAnalysisCache"
+    "aiAnalysisCache",
+    "noiseFilterStrength",
+    "deprioritizeInvoiceEmails",
+    "deprioritizeOrderAcknowledgements",
+    "deprioritizeQuoteAcknowledgements"
   ]);
+  const analysisSettings = {
+    noiseFilterStrength,
+    deprioritizeInvoiceEmails,
+    deprioritizeOrderAcknowledgements,
+    deprioritizeQuoteAcknowledgements
+  };
 
   if (!items.length) {
     return {};
@@ -1390,15 +1674,19 @@ async function analyzeBatch(items) {
 
   if (!enableSummaries || !openaiKey) {
     for (const item of items) {
-      const analysisHash = await hashAnalysisFingerprint(buildAnalysisFingerprint(item));
-      analysisMap[item.guid] = getHeuristicAnalysis(item, analysisHash);
+      const analysisHash = await hashAnalysisFingerprint(
+        `${buildAnalysisFingerprint(item)}\n${getAnalysisTuningFingerprint(analysisSettings)}`
+      );
+      analysisMap[item.guid] = getHeuristicAnalysis(item, analysisHash, analysisSettings);
     }
     return analysisMap;
   }
 
   for (const item of items) {
-    const analysisHash = await hashAnalysisFingerprint(buildAnalysisFingerprint(item));
-    const heuristic = getHeuristicAnalysis(item, analysisHash);
+    const analysisHash = await hashAnalysisFingerprint(
+      `${buildAnalysisFingerprint(item)}\n${getAnalysisTuningFingerprint(analysisSettings)}`
+    );
+    const heuristic = getHeuristicAnalysis(item, analysisHash, analysisSettings);
     const cached = cache[analysisHash]?.analysis;
     if (cached && cached.version === AI_ANALYSIS_VERSION) {
       analysisMap[item.guid] = {
@@ -1437,7 +1725,10 @@ async function analyzeBatch(items) {
           role: "system",
           content:
             "You analyze Capsule CRM activity for inside sales, customer service, and sales managers. " +
-            "Return structured JSON only. Flag automated acknowledgements and low-value system updates as lower priority unless a customer question, change request, escalation, or actionable follow-up is present."
+            "Return structured JSON only. " +
+            "Flag automated acknowledgements, invoice notices, quote receipts, order confirmations, and low-value system updates as lower priority unless a customer question, change request, escalation, or explicit follow-up request is present. " +
+            "Summaries must describe only the message content and any explicit action items stated in the message. " +
+            "Do not recommend next steps, do not infer unstated actions, and do not editorialize."
         },
         {
           role: "user",
@@ -1447,7 +1738,12 @@ async function analyzeBatch(items) {
             "Use priority values low, medium, high, critical. " +
             "Use reply_urgency values none, today, soon, urgent. " +
             "Categories should be concise snake_case labels such as customer_request, order_change, automated_update, internal_note, escalation, scheduling, quote_request, follow_up. " +
-            "Each summary must be 20-30 words and explain the business impact clearly. " +
+            `Noise filtering mode is ${analysisSettings.noiseFilterStrength}. ` +
+            `Treat invoice emails as low priority by default: ${analysisSettings.deprioritizeInvoiceEmails !== false}. ` +
+            `Treat order acknowledgements as low priority by default: ${analysisSettings.deprioritizeOrderAcknowledgements !== false}. ` +
+            `Treat quote acknowledgements as low priority by default: ${analysisSettings.deprioritizeQuoteAcknowledgements !== false}. ` +
+            "Each summary must be 12-28 words and summarize only the email plus explicit action items. " +
+            "Do not include recommendations, inferred next steps, or commentary about what should happen next. " +
             "Set needs_reply true only when a human reply is warranted. " +
             "Set task_needed true only when work should be tracked. " +
             "workflow_actions should only contain items from: reply_email, schedule_meeting, create_capsule_task, open_capsule. " +
@@ -1505,7 +1801,7 @@ async function analyzeBatch(items) {
       continue;
     }
 
-    const fallback = getHeuristicAnalysis(item, item.analysisHash);
+    const fallback = getHeuristicAnalysis(item, item.analysisHash, analysisSettings);
     analysisMap[item.guid] = fallback;
     cache[item.analysisHash] = {
       cachedAt: fallback.analyzedAt,
@@ -1545,6 +1841,30 @@ function mergeItems(existingItems, incomingItems) {
   return [...merged.values()]
     .sort((a, b) => new Date(b.date) - new Date(a.date))
     .slice(0, MAX_STORED_ITEMS);
+}
+
+async function reanalyzeStoredItems() {
+  const { rssItems = [] } = await chrome.storage.local.get("rssItems");
+  if (!rssItems.length) {
+    return [];
+  }
+
+  const analysisMap = await analyzeBatch(rssItems);
+  const nextItems = rssItems.map(item => {
+    const analysis = analysisMap[item.guid];
+    if (!analysis) {
+      return item;
+    }
+
+    return {
+      ...item,
+      summary: analysis.summary || item.snippet || item.summary || "",
+      ai: analysis
+    };
+  });
+
+  await chrome.storage.local.set({ rssItems: nextItems });
+  return nextItems;
 }
 
 async function notifyNewItems(newItems) {
@@ -1596,6 +1916,10 @@ async function getSettings() {
     "showMediumInFeed",
     "hideLowPriorityInFeed",
     "alwaysShowReplyNeeded",
+    "noiseFilterStrength",
+    "deprioritizeInvoiceEmails",
+    "deprioritizeOrderAcknowledgements",
+    "deprioritizeQuoteAcknowledgements",
     "calendarShortcutMode",
     "enableDigestAutomation",
     "morningDigestHour",
@@ -1619,6 +1943,10 @@ async function getSettings() {
     showMediumInFeed: data.showMediumInFeed !== false,
     hideLowPriorityInFeed: data.hideLowPriorityInFeed !== false,
     alwaysShowReplyNeeded: data.alwaysShowReplyNeeded !== false,
+    noiseFilterStrength: ["balanced", "strict", "aggressive"].includes(data.noiseFilterStrength) ? data.noiseFilterStrength : "balanced",
+    deprioritizeInvoiceEmails: data.deprioritizeInvoiceEmails !== false,
+    deprioritizeOrderAcknowledgements: data.deprioritizeOrderAcknowledgements !== false,
+    deprioritizeQuoteAcknowledgements: data.deprioritizeQuoteAcknowledgements !== false,
     calendarShortcutMode: data.calendarShortcutMode === "always" ? "always" : "meeting_only",
     enableDigestAutomation: data.enableDigestAutomation === true,
     morningDigestHour: Number.isInteger(data.morningDigestHour) ? data.morningDigestHour : 8,
@@ -1871,6 +2199,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await applyDockSetting();
         await scheduleAlarm(settings.interval);
         await scheduleDigestAlarm();
+        await reanalyzeStoredItems();
         if (requirements.ok) {
           try {
             await refreshCapsuleTasks();
@@ -1932,6 +2261,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     generateDigestByType(msg.digestType)
       .then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error.message || "Unable to generate digest." }));
+    return true;
+  }
+
+  if (msg.type === "deleteDigest" && msg.digestId) {
+    deleteDigestById(msg.digestId)
+      .then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error.message || "Unable to delete digest." }));
     return true;
   }
 

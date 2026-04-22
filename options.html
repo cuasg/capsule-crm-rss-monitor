@@ -108,6 +108,31 @@
     </fieldset>
 
     <fieldset class="option-group">
+      <legend>Noise Filtering</legend>
+      <div class="option-row">
+        <label for="noiseFilterStrength">Noise Filter</label>
+        <select id="noiseFilterStrength">
+          <option value="balanced">Balanced</option>
+          <option value="strict">Strict</option>
+          <option value="aggressive">Aggressive</option>
+        </select>
+      </div>
+      <div class="option-row option-row-checkbox">
+        <label for="deprioritizeInvoiceEmails">Invoice Emails</label>
+        <label class="checkbox-label"><input type="checkbox" id="deprioritizeInvoiceEmails" /> Treat invoice and billing notices as low priority unless action is requested</label>
+      </div>
+      <div class="option-row option-row-checkbox">
+        <label for="deprioritizeOrderAcknowledgements">Order Acknowledgements</label>
+        <label class="checkbox-label"><input type="checkbox" id="deprioritizeOrderAcknowledgements" /> Treat order and shipment acknowledgements as low priority unless action is requested</label>
+      </div>
+      <div class="option-row option-row-checkbox">
+        <label for="deprioritizeQuoteAcknowledgements">Quote Acknowledgements</label>
+        <label class="checkbox-label"><input type="checkbox" id="deprioritizeQuoteAcknowledgements" /> Treat quote receipt and quote acknowledgements as low priority unless action is requested</label>
+      </div>
+      <p class="option-note">These settings bias the classifier toward hiding automated commercial noise while still surfacing messages with explicit questions, changes, issues, or follow-up requests.</p>
+    </fieldset>
+
+    <fieldset class="option-group">
       <legend>Workflow Shortcuts</legend>
       <div class="option-row">
         <label for="calendarShortcutMode">Calendar Shortcut</label>

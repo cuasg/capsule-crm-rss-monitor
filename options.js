@@ -15,6 +15,10 @@ const notifyPriorityThresholdSelect = document.getElementById("notifyPriorityThr
 const showMediumInFeedToggle = document.getElementById("showMediumInFeed");
 const hideLowPriorityInFeedToggle = document.getElementById("hideLowPriorityInFeed");
 const alwaysShowReplyNeededToggle = document.getElementById("alwaysShowReplyNeeded");
+const noiseFilterStrengthSelect = document.getElementById("noiseFilterStrength");
+const deprioritizeInvoiceEmailsToggle = document.getElementById("deprioritizeInvoiceEmails");
+const deprioritizeOrderAcknowledgementsToggle = document.getElementById("deprioritizeOrderAcknowledgements");
+const deprioritizeQuoteAcknowledgementsToggle = document.getElementById("deprioritizeQuoteAcknowledgements");
 const calendarShortcutModeSelect = document.getElementById("calendarShortcutMode");
 const enableDigestAutomationToggle = document.getElementById("enableDigestAutomation");
 const morningDigestHourSelect = document.getElementById("morningDigestHour");
@@ -87,6 +91,10 @@ async function loadSettings() {
     "showMediumInFeed",
     "hideLowPriorityInFeed",
     "alwaysShowReplyNeeded",
+    "noiseFilterStrength",
+    "deprioritizeInvoiceEmails",
+    "deprioritizeOrderAcknowledgements",
+    "deprioritizeQuoteAcknowledgements",
     "calendarShortcutMode",
     "enableDigestAutomation",
     "morningDigestHour",
@@ -108,6 +116,12 @@ async function loadSettings() {
   showMediumInFeedToggle.checked = localData.showMediumInFeed !== false;
   hideLowPriorityInFeedToggle.checked = localData.hideLowPriorityInFeed !== false;
   alwaysShowReplyNeededToggle.checked = localData.alwaysShowReplyNeeded !== false;
+  noiseFilterStrengthSelect.value = ["balanced", "strict", "aggressive"].includes(localData.noiseFilterStrength)
+    ? localData.noiseFilterStrength
+    : "balanced";
+  deprioritizeInvoiceEmailsToggle.checked = localData.deprioritizeInvoiceEmails !== false;
+  deprioritizeOrderAcknowledgementsToggle.checked = localData.deprioritizeOrderAcknowledgements !== false;
+  deprioritizeQuoteAcknowledgementsToggle.checked = localData.deprioritizeQuoteAcknowledgements !== false;
   calendarShortcutModeSelect.value = localData.calendarShortcutMode === "always" ? "always" : "meeting_only";
   enableDigestAutomationToggle.checked = localData.enableDigestAutomation === true;
   morningDigestHourSelect.value = String(Number.isInteger(localData.morningDigestHour) ? localData.morningDigestHour : 8);
@@ -148,6 +162,12 @@ saveBtn.addEventListener("click", async () => {
     showMediumInFeed: showMediumInFeedToggle.checked,
     hideLowPriorityInFeed: hideLowPriorityInFeedToggle.checked,
     alwaysShowReplyNeeded: alwaysShowReplyNeededToggle.checked,
+    noiseFilterStrength: ["balanced", "strict", "aggressive"].includes(noiseFilterStrengthSelect.value)
+      ? noiseFilterStrengthSelect.value
+      : "balanced",
+    deprioritizeInvoiceEmails: deprioritizeInvoiceEmailsToggle.checked,
+    deprioritizeOrderAcknowledgements: deprioritizeOrderAcknowledgementsToggle.checked,
+    deprioritizeQuoteAcknowledgements: deprioritizeQuoteAcknowledgementsToggle.checked,
     calendarShortcutMode: calendarShortcutModeSelect.value === "always" ? "always" : "meeting_only",
     enableDigestAutomation: enableDigestAutomationToggle.checked,
     morningDigestHour: Number.parseInt(morningDigestHourSelect.value, 10) || 8,
@@ -155,7 +175,7 @@ saveBtn.addEventListener("click", async () => {
     endOfDayDigestHour: Number.parseInt(endOfDayDigestHourSelect.value, 10) || 17
   });
 
-  await chrome.storage.local.remove(["rssItems", "capsuleTasks", "runtimeStatus"]);
+  await chrome.storage.local.remove(["runtimeStatus", "aiAnalysisCache"]);
 
   const response = await chrome.runtime.sendMessage({ type: "settingsUpdated" });
   if (!response?.ok) {

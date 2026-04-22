@@ -553,18 +553,22 @@ function attachWorkflowShortcuts(container, item) {
 }
 
 function shouldHideFromFeed(item, tab) {
-  const priority = getItemPriority(item);
-  const needsReply = item.ai?.needsReply === true;
-
-  if (tab !== "saved" && filterSettings.alwaysShowReplyNeeded && needsReply) {
+  if (tab !== "recent") {
     return false;
   }
 
-  if (tab !== "saved" && !filterSettings.showMediumInFeed && priority === "medium") {
+  const priority = getItemPriority(item);
+  const needsReply = item.ai?.needsReply === true;
+
+  if (filterSettings.alwaysShowReplyNeeded && needsReply) {
+    return false;
+  }
+
+  if (!filterSettings.showMediumInFeed && priority === "medium") {
     return true;
   }
 
-  if (tab !== "saved" && filterSettings.hideLowPriorityInFeed && priority === "low") {
+  if (filterSettings.hideLowPriorityInFeed && priority === "low") {
     return true;
   }
 
@@ -916,6 +920,83 @@ function toggleHistoryFilters() {
   toggleSecondaryPanels();
 }
 
+function setActiveTab(tabName) {
+  currentTab = tabName;
+  document.querySelectorAll(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.tab === tabName));
+  renderPosts(tabName);
+}
+
+function createDigestReferenceList(title, items, onSelect) {
+  const section = document.createElement("section");
+  section.className = "digest-section";
+
+  const heading = document.createElement("h4");
+  heading.className = "digest-section-title";
+  heading.textContent = title;
+  section.appendChild(heading);
+
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "digest-section-empty";
+    empty.textContent = "None";
+    section.appendChild(empty);
+    return section;
+  }
+
+  const list = document.createElement("div");
+  list.className = "digest-reference-list";
+
+  for (const item of items) {
+    const row = document.createElement("div");
+    row.className = "digest-reference-item";
+
+    const focusButton = document.createElement("button");
+    focusButton.type = "button";
+    focusButton.className = "digest-reference-btn";
+    const primaryLabel = item.title || item.name || "Open activity";
+    focusButton.textContent = item.contact ? `${primaryLabel} · ${item.contact}` : primaryLabel;
+    focusButton.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      onSelect(item);
+    });
+    row.appendChild(focusButton);
+
+    if (item.link) {
+      const openButton = document.createElement("button");
+      openButton.type = "button";
+      openButton.className = "workflow-btn icon-only-btn";
+      openButton.title = "Open in Capsule";
+      openButton.setAttribute("aria-label", "Open in Capsule");
+      openButton.textContent = "↗";
+      openButton.addEventListener("click", async event => {
+        event.preventDefault();
+        event.stopPropagation();
+        await chrome.runtime.sendMessage({ type: "openEntry", url: item.link });
+      });
+      row.appendChild(openButton);
+    }
+
+    list.appendChild(row);
+  }
+
+  section.appendChild(list);
+  return section;
+}
+
+async function focusDigestReference(reference) {
+  if (reference.threadKey) {
+    expandedThreads.history.add(reference.threadKey);
+  }
+  setActiveTab("history");
+  await loadPosts();
+  const selector = reference.threadKey ? `.post[data-thread-key="${CSS.escape(reference.threadKey)}"]` : null;
+  const target = selector ? document.querySelector(selector) : null;
+  if (target) {
+    target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
+
 function createDigestCard(digest) {
   const card = document.createElement("article");
   card.className = "post digest-card";
@@ -929,7 +1010,31 @@ function createDigestCard(digest) {
   const titleTime = document.createElement("span");
   titleTime.className = "post-time";
   titleTime.textContent = new Date(digest.generatedAt).toLocaleString();
-  title.append(titleText, titleTime);
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "workflow-btn icon-only-btn";
+  deleteButton.title = "Delete digest";
+  deleteButton.setAttribute("aria-label", "Delete digest");
+  deleteButton.textContent = "✕";
+  deleteButton.addEventListener("click", async event => {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "deleteDigest", digestId: digest.id });
+      if (!response?.ok) {
+        throw new Error(response?.error || "Unable to delete digest.");
+      }
+      showActionStatus("Digest deleted.");
+      await loadPosts();
+      if (currentTab === "digests") {
+        renderPosts("digests");
+      }
+    } catch (error) {
+      console.error(error);
+      showActionStatus(error.message || "Digest deletion failed.", true);
+    }
+  });
+  title.append(titleText, titleTime, deleteButton);
 
   const meta = document.createElement("div");
   meta.className = "post-meta";
@@ -952,7 +1057,18 @@ function createDigestCard(digest) {
 
   const stats = document.createElement("p");
   stats.className = "digest-stats";
-  stats.textContent = `Open tasks: ${digest.taskSummary.open} | Due today: ${digest.taskSummary.dueToday} | Overdue: ${digest.taskSummary.overdue}`;
+  stats.textContent = `Quotes sent: ${digest.metrics?.quotesSent || 0} | Order acknowledgements: ${digest.metrics?.orderAcknowledgements || 0} | Complaints open: ${digest.metrics?.customerComplaints?.open || 0} | Complaints closed: ${digest.metrics?.customerComplaints?.closed || 0}`;
+
+  const detail = document.createElement("div");
+  detail.className = "digest-detail";
+  detail.append(
+    createDigestReferenceList("Open Complaints", digest.references?.complaintsOpen || [], focusDigestReference),
+    createDigestReferenceList("Closed Complaints", digest.references?.complaintsClosed || [], focusDigestReference),
+    createDigestReferenceList("Quotes Sent", digest.references?.quotesSent || [], focusDigestReference),
+    createDigestReferenceList("Order Acknowledgements", digest.references?.orderAcknowledgements || [], focusDigestReference),
+    createDigestReferenceList("Reply Needed", digest.references?.replyNeeded || [], focusDigestReference),
+    createDigestReferenceList("Most Active Contacts", digest.references?.topContacts || [], focusDigestReference)
+  );
 
   const toggleExpanded = () => {
     card.classList.toggle("expanded");
@@ -966,7 +1082,7 @@ function createDigestCard(digest) {
     }
   });
 
-  card.append(title, meta, stats);
+  card.append(title, meta, stats, detail);
   return card;
 }
 
@@ -1188,6 +1304,7 @@ function renderPosts(tab) {
     const threadGuids = thread.items.map(item => item.guid);
     const isBundle = thread.items.length > 1;
     const isExpanded = expandedThreads[tab].has(thread.key);
+    container.dataset.threadKey = thread.key;
 
     if (isBundle) {
       const badge = document.createElement("span");
@@ -1199,8 +1316,7 @@ function renderPosts(tab) {
       toggle.classList.add("expandable");
       toggle.tabIndex = 0;
     } else {
-      chevron.remove();
-      threadItemsContainer.remove();
+      container.classList.add("threaded");
       toggle.classList.add("single-message", "expandable");
       toggle.tabIndex = 0;
     }
@@ -1235,7 +1351,7 @@ function renderPosts(tab) {
       container.classList.add("expanded");
     }
 
-    if (isBundle && isExpanded) {
+    if (isExpanded) {
       threadItemsContainer.classList.remove("hidden");
       for (const item of thread.items) {
         threadItemsContainer.appendChild(createThreadMessage(item, threadGuids));
@@ -1435,11 +1551,17 @@ async function generateDigest() {
     if (!response?.ok) {
       throw new Error(response?.error || "Digest generation failed.");
     }
-    showActionStatus("End-of-day digest generated.");
+    if (!response.digest) {
+      showActionStatus("No activity matched this digest window.", true);
+      return;
+    }
     await loadPosts();
-    currentTab = "digests";
-    document.querySelectorAll(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.tab === "digests"));
-    renderPosts(currentTab);
+    setActiveTab("digests");
+    showActionStatus(
+      response.created === false
+        ? "Day digest already existed for this window."
+        : "Day digest generated."
+    );
   } catch (error) {
     console.error(error);
     showActionStatus(error.message || "Digest generation failed.", true);

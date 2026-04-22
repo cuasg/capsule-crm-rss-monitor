@@ -1,26 +1,47 @@
 # Capsule CRM Activity Monitor
 
-Chrome extension that turns Capsule CRM activity into a browser-side triage workspace. It monitors Capsule entries, groups related activity, surfaces AI-assisted summaries and priority signals, exposes workflow shortcuts for email and calendar actions, and tracks Capsule-backed tasks and saved digests from the popup or side panel.
+Chrome extension for reviewing Capsule CRM activity in a browser-side workspace. It pulls recent activity, groups related emails, adds optional AI classification, supports follow-up actions, tracks Capsule tasks, and generates daily digest views.
 
-## Current Scope
+## Index
+
+1. Overview
+2. Key Features
+3. Project Files
+4. Setup
+5. Configuration
+6. Daily Use
+7. Digests
+8. Data and Storage
+9. Pre-Push Checklist
+10. Packaging
+
+## Overview
+
+This extension is designed to help review Capsule activity without living inside the Capsule UI all day. It focuses on triage, follow-up, and quick drill-down:
+
+- grouped activity feed
+- task-aware workflow shortcuts
+- optional AI summaries and priority classification
+- configurable filtering for low-value automated email noise
+- digest views for daily activity review
+
+## Key Features
 
 - Capsule activity polling with manual refresh and side-panel support
-- Grouped recent feed, saved view, history view, digest view, and dedicated tasks view
-- Setup-required gating in the popup until the required Capsule settings are configured
-- AI summaries, priority classification, action flags, and structured metadata on new entries
-- Workflow shortcuts for reply, AI draft, scheduling, Capsule task creation, and Capsule task completion
-- Capsule-backed task tracking with owner filtering and task-state counts
-- Search across message content, recipients, AI fields, and task/action flags like `reply needed` and `task needed`
-- Digest generation and storage for morning, midday, and end-of-day review
-- Bottom status area for refresh/action messages that does not overlay the feed
+- Grouped `Recent`, `Saved`, `History`, `Digests`, and `Tasks` views
+- Optional AI summaries, priority labels, and action flags
+- Reply, AI draft, scheduling, and Capsule task shortcuts
+- Thread expansion for both grouped threads and single-message posts
+- Configurable noise filtering for invoice emails, quote acknowledgements, and order acknowledgements
+- Day Digest generation with drill-down into referenced activity
 - JSON and CSV export of cached activity
 
-## Main Files
+## Project Files
 
 - [manifest.json](./manifest.json): Chrome extension manifest
-- [background.js](./background.js): polling, Capsule/OpenAI calls, task sync, digests, notifications
+- [background.js](./background.js): polling, Capsule/OpenAI calls, classification, task sync, digests, notifications
 - [popup.html](./popup.html): popup and side-panel markup
-- [popup.js](./popup.js): feed rendering, task tab, UI actions
+- [popup.js](./popup.js): feed rendering, digest drill-down, task tab, UI actions
 - [options.html](./options.html): settings page
 - [options.js](./options.js): settings persistence and export actions
 - [style.css](./style.css): shared popup/options styling
@@ -33,65 +54,129 @@ Chrome extension that turns Capsule CRM activity into a browser-side triage work
 4. Click `Load unpacked`.
 5. Select this project directory.
 6. Open the extension and go to `Settings`.
-7. Add your Capsule API token.
-8. Add your Capsule web app URL, for example `https://your-account.capsulecrm.com`.
-9. Save settings. The extension stays in setup-required mode until both of the Capsule fields above are configured.
+7. Add your `Capsule API Token`.
+8. Add your `Capsule Web App URL`, for example `https://your-account.capsulecrm.com`.
+9. Save settings.
 10. Optionally add an OpenAI API key and enable AI summaries.
 
-## Runtime Dependencies
+The popup stays in setup-required mode until the Capsule token and Capsule web URL are configured.
 
-- Capsule API: `https://api.capsulecrm.com/api/v2/*`
-- OpenAI API: `https://api.openai.com/v1/*`
-- Capsule web app links are built from the configured `Capsule Web App URL` setting
+## Configuration
 
-## Multi-Tenant Configuration
+### Required
 
-- No Capsule tenant web URL is hardcoded in the extension.
-- Each user must supply their own Capsule account URL in `Settings`.
-- If the Capsule API token or Capsule web app URL is missing, the popup shows a setup-required modal and the background worker reports a configuration warning instead of trying to build broken links.
-- Capsule task and party links are disabled until that web app URL is configured.
+- `Capsule API Token`
+- `Capsule Web App URL`
 
-## Notes On Data And Storage
+No Capsule tenant web URL is hardcoded in the extension. Each user must supply their own account URL in Settings.
 
-- The extension stores UI state and cached activity in Chrome extension storage.
-- Capsule and OpenAI credentials are stored in the local Chrome profile, not in this repository.
-- The configured Capsule web app URL is also stored in the local Chrome profile.
-- Task counts in the UI are Capsule-focused. Local storage is used as a cache, not the primary task system.
-- AI summaries and classifications are cached to reduce repeat API usage.
-- Changing core Capsule settings clears cached feed/task state so the popup reloads against the current account configuration.
+### Optional
 
-## Recent Changes
+- `OpenAI API Key`
+- AI summaries on/off
+- notification interval and snooze behavior
+- notification priority threshold
+- feed visibility rules for medium and low priority items
+- always surface reply-needed items
+- calendar shortcut behavior
+- digest automation schedule
+- noise filtering strictness
 
-- Replaced the hardcoded Capsule tenant web URL with a per-user `Capsule Web App URL` setting.
-- Added popup setup gating so incomplete configuration is surfaced immediately instead of failing later during link or task actions.
-- Moved transient popup status messages into reserved footer space so they no longer cover feed content.
-- Reduced popup rerender churn by consolidating storage-change reloads and indexing linked task lookups.
-- Removed avoidable `innerHTML` usage in several popup render paths that display CRM- or AI-derived text.
+### Noise Filtering
 
-## Git / Upload Checklist
+Noise filtering is intended to suppress low-value commercial email without hiding real customer work.
 
-Before pushing or packaging:
+Available controls:
+
+- `Noise Filter`: `Balanced`, `Strict`, `Aggressive`
+- deprioritize invoice emails
+- deprioritize order acknowledgements
+- deprioritize quote acknowledgements
+
+### AI Summary Rules
+
+Summaries are intended to:
+
+- summarize the message itself
+- extract explicit action items mentioned in the message
+
+Summaries should not:
+
+- recommend next steps
+- infer actions not stated in the email
+- add commentary beyond the message content
+
+## Daily Use
+
+### Feed Views
+
+- `Recent`: main triage view
+- `Saved`: pinned threads
+- `History`: cached activity history
+- `Digests`: generated digest cards with drill-down references
+- `Tasks`: Capsule task view with owner and status filters
+
+### Thread Interaction
+
+- Click the subject link to open the Capsule item directly.
+- Click the body/card area to expand the thread.
+- Single-message posts can also be expanded to view the full detail pane.
+
+### Filtering
+
+Priority-based hiding is intended for the `Recent` feed. `History` remains available for broader review even when stricter noise filtering is enabled.
+
+## Digests
+
+The main manual digest action creates a `Day Digest`.
+
+Digests are thread-aware and meant to summarize activity, not just tasks. They can include:
+
+- quotes sent
+- order acknowledgements
+- open complaints
+- closed complaints
+- reply-needed threads
+- most active contacts
+
+Expanded digest cards support:
+
+- drill-down into related history threads
+- direct Capsule links when available
+- deletion from the `Digests` view
+
+## Data and Storage
+
+- UI state and cached activity are stored in Chrome extension storage.
+- Capsule credentials and OpenAI credentials are stored in the local Chrome profile, not in this repository.
+- The configured Capsule web URL is stored in the local Chrome profile.
+- AI analysis is cached to reduce repeat API usage.
+- Changing core analysis settings may invalidate AI analysis cache and reanalyze existing items.
+- Task counts in the UI are Capsule-focused. Local storage acts as cache, not the source of truth.
+
+## Pre-Push Checklist
 
 1. Confirm `manifest.json` version is correct.
 2. Verify no secrets were added to tracked files.
-3. Load the extension unpacked and click through:
+3. Reload the unpacked extension in Chrome.
+4. Click through:
    `Recent`, `Saved`, `History`, `Digests`, `Tasks`, `Settings`
-4. Sanity-check:
-   refresh, notifications, Gmail reply shortcut, AI draft, task creation/completion, digest generation, setup-required modal behavior
-5. Review `git status` and make sure local-only files are ignored.
+5. Sanity-check:
+   refresh, notifications, reply shortcut, AI draft, task creation/completion, digest generation/deletion, digest drill-down, setup-required modal
+6. Review `git status`.
 
-## Recommended Pre-Push Review
+Recommended real-data checks:
 
-- Test with real Capsule data, especially:
-  task creation/completion, task owner filtering, thread grouping, and digest rendering
-- Confirm the configured Capsule web app URL matches the target account
-- If publishing externally, replace tenant-specific references in docs or manifest text as needed
+- task creation and completion
+- task owner filtering
+- thread grouping and expansion
+- noise filtering behavior
+- digest metrics and drill-down links
+- configured Capsule web URL correctness
 
 ## Packaging
 
-For a release build:
-
 1. Update the version in [manifest.json](./manifest.json).
-2. Reload the unpacked extension in Chrome.
+2. Reload the unpacked extension.
 3. Run through the main user flows.
-4. Zip the project directory contents for upload to the Chrome Web Store, excluding ignored local files.
+4. Zip the project contents for Chrome Web Store upload, excluding ignored local files.
