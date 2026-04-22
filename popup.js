@@ -13,12 +13,16 @@ let actionSettings = {
 };
 let capsuleTasks = [];
 let digests = [];
+let missingSetupItems = [];
+let allTaskIndexes = { byGuid: new Map(), byLink: new Map() };
+let filteredTaskIndexes = { byGuid: new Map(), byLink: new Map() };
 let taskSummary = {
   open: 0,
   dueToday: 0,
   overdue: 0
 };
 let runtimeStatus = null;
+let loadPostsPromise = null;
 const expandedThreads = {
   recent: new Set(),
   saved: new Set(),
@@ -94,6 +98,45 @@ function getActiveTaskForItem(item) {
   )) || null;
 }
 
+function createTaskIndexes(tasks) {
+  const byGuid = new Map();
+  const byLink = new Map();
+
+  for (const task of tasks) {
+    if (task.sourceGuid) {
+      const existing = byGuid.get(task.sourceGuid) || [];
+      existing.push(task);
+      byGuid.set(task.sourceGuid, existing);
+    }
+
+    if (task.sourceLink) {
+      const existing = byLink.get(task.sourceLink) || [];
+      existing.push(task);
+      byLink.set(task.sourceLink, existing);
+    }
+  }
+
+  return { byGuid, byLink };
+}
+
+function getIndexedTasksForItem(indexes, item) {
+  const matches = [];
+
+  if (item.guid && indexes.byGuid.has(item.guid)) {
+    matches.push(...indexes.byGuid.get(item.guid));
+  }
+
+  if (item.link && indexes.byLink.has(item.link)) {
+    for (const task of indexes.byLink.get(item.link)) {
+      if (!matches.includes(task)) {
+        matches.push(task);
+      }
+    }
+  }
+
+  return matches;
+}
+
 function getFilteredCapsuleTasks() {
   if (currentTaskOwner === "all") {
     return capsuleTasks;
@@ -107,17 +150,11 @@ function getLinkedTasks(tasks) {
 }
 
 function getAllMatchingTasksForItem(item) {
-  return capsuleTasks.filter(task => (
-    (task.sourceGuid && task.sourceGuid === item.guid) ||
-    (task.sourceLink && item.link && task.sourceLink === item.link)
-  ));
+  return getIndexedTasksForItem(allTaskIndexes, item);
 }
 
 function getMatchingTasksForItem(item) {
-  return getFilteredCapsuleTasks().filter(task => (
-    (task.sourceGuid && task.sourceGuid === item.guid) ||
-    (task.sourceLink && item.link && task.sourceLink === item.link)
-  ));
+  return getIndexedTasksForItem(filteredTaskIndexes, item);
 }
 
 function matchesTaskFilter(item) {
@@ -168,6 +205,7 @@ function populateTaskOwnerFilter() {
 
   select.value = owners.includes(currentTaskOwner) ? currentTaskOwner : "all";
   currentTaskOwner = select.value;
+  filteredTaskIndexes = createTaskIndexes(getFilteredCapsuleTasks());
 }
 
 function updateTaskSummaryUI() {
@@ -211,6 +249,41 @@ function renderRuntimeStatus() {
     container.textContent = "";
     container.className = "runtime-status hidden";
   }, 5000);
+}
+
+function getMissingSetupItems(settings = {}) {
+  const missing = [];
+
+  if (!String(settings.capsuleToken || "").trim()) {
+    missing.push("Capsule API Token");
+  }
+
+  if (!String(settings.capsuleWebBaseUrl || "").trim()) {
+    missing.push("Capsule Web App URL");
+  }
+
+  return missing;
+}
+
+function renderSetupModal() {
+  const modal = document.getElementById("setupModal");
+  const message = document.getElementById("setupModalMessage");
+  const missing = document.getElementById("setupModalMissing");
+
+  if (!missingSetupItems.length) {
+    modal.classList.add("hidden");
+    return;
+  }
+
+  message.textContent = "This extension requires your Capsule account settings before links, refreshes, and task actions can work.";
+  const list = document.createElement("ul");
+  for (const item of missingSetupItems) {
+    const entry = document.createElement("li");
+    entry.textContent = item;
+    list.appendChild(entry);
+  }
+  missing.replaceChildren(list);
+  modal.classList.remove("hidden");
 }
 
 function toggleSecondaryPanels() {
@@ -850,18 +923,32 @@ function createDigestCard(digest) {
 
   const title = document.createElement("div");
   title.className = "title-container";
-  title.innerHTML = `<strong class="post-title">${digest.typeLabel || "Digest"}</strong><span class="post-time">${new Date(digest.generatedAt).toLocaleString()}</span>`;
+  const titleText = document.createElement("strong");
+  titleText.className = "post-title";
+  titleText.textContent = digest.typeLabel || "Digest";
+  const titleTime = document.createElement("span");
+  titleTime.className = "post-time";
+  titleTime.textContent = new Date(digest.generatedAt).toLocaleString();
+  title.append(titleText, titleTime);
 
   const meta = document.createElement("div");
   meta.className = "post-meta";
-  meta.innerHTML = `
-    <div class="post-insights">
-      <span class="insight-badge insight-category">${digest.source === "ai" ? "AI Summary" : "Local Summary"}</span>
-      <span class="insight-badge insight-category">${(digest.typeLabel || digest.type || "digest").replace(/_/g, " ")}</span>
-      <span class="insight-badge insight-category">${digest.itemCount} Updates</span>
-    </div>
-    <p class="post-snippet">${digest.text}</p>
-  `;
+  const digestInsights = document.createElement("div");
+  digestInsights.className = "post-insights";
+  for (const label of [
+    digest.source === "ai" ? "AI Summary" : "Local Summary",
+    (digest.typeLabel || digest.type || "digest").replace(/_/g, " "),
+    `${digest.itemCount} Updates`
+  ]) {
+    const badge = document.createElement("span");
+    badge.className = "insight-badge insight-category";
+    badge.textContent = label;
+    digestInsights.appendChild(badge);
+  }
+  const digestSnippet = document.createElement("p");
+  digestSnippet.className = "post-snippet";
+  digestSnippet.textContent = digest.text || "";
+  meta.append(digestInsights, digestSnippet);
 
   const stats = document.createElement("p");
   stats.className = "digest-stats";
@@ -955,10 +1042,13 @@ function createTaskCard(task) {
 
   const meta = document.createElement("div");
   meta.className = "post-meta";
-  meta.innerHTML = `
-    <small class="post-author">${task.partyName ? `for ${task.partyName}` : ""}</small>
-    <small class="post-recipient">${task.sourceTitle ? `from ${task.sourceTitle}` : ""}</small>
-  `;
+  const authorMeta = document.createElement("small");
+  authorMeta.className = "post-author";
+  authorMeta.textContent = task.partyName ? `for ${task.partyName}` : "";
+  const recipientMeta = document.createElement("small");
+  recipientMeta.className = "post-recipient";
+  recipientMeta.textContent = task.sourceTitle ? `from ${task.sourceTitle}` : "";
+  meta.append(authorMeta, recipientMeta);
 
   const snippet = document.createElement("p");
   snippet.className = "post-snippet";
@@ -1208,6 +1298,11 @@ function renderPosts(tab) {
 }
 
 async function loadPosts() {
+  if (loadPostsPromise) {
+    return loadPostsPromise;
+  }
+
+  loadPostsPromise = (async () => {
   const {
     rssItems = [],
     capsuleTasks: storedTasks = [],
@@ -1216,6 +1311,8 @@ async function loadPosts() {
     showMediumInFeed = true,
     hideLowPriorityInFeed = true,
     alwaysShowReplyNeeded = true,
+    capsuleToken = "",
+    capsuleWebBaseUrl = "",
     emailClient = "default",
     calendarShortcutMode = "meeting_only"
   } = await chrome.storage.local.get([
@@ -1226,9 +1323,15 @@ async function loadPosts() {
     "showMediumInFeed",
     "hideLowPriorityInFeed",
     "alwaysShowReplyNeeded",
+    "capsuleToken",
+    "capsuleWebBaseUrl",
     "emailClient",
     "calendarShortcutMode"
   ]);
+
+  const sortedPosts = [...rssItems].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const postsByGuid = new Map(sortedPosts.map(item => [item.guid, item]));
+  const postsByLink = new Map(sortedPosts.filter(item => item.link).map(item => [item.link, item]));
 
   filterSettings = {
     showMediumInFeed,
@@ -1240,6 +1343,7 @@ async function loadPosts() {
     calendarShortcutMode
   };
   capsuleTasks = storedTasks.map(task => {
+    const sourceItem = postsByGuid.get(task.sourceGuid) || (task.sourceLink ? postsByLink.get(task.sourceLink) : null);
     const today = new Date().toISOString().slice(0, 10);
     const isCompleted = task.status === "completed" || task.status === "dismissed" || task.status === "pending";
     const normalizedStatus = isCompleted
@@ -1250,18 +1354,28 @@ async function loadPosts() {
 
     return {
       ...task,
+      sourceTitle: task.sourceTitle || sourceItem?.title || "",
+      sourceLink: task.sourceLink || sourceItem?.link || "",
       status: normalizedStatus,
       dueToday: !isCompleted && task.dueDate === today
     };
   });
+  allTaskIndexes = createTaskIndexes(capsuleTasks);
   digests = [...storedDigests].sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt));
   runtimeStatus = storedRuntimeStatus;
-  posts = [...rssItems].sort((a, b) => new Date(b.date) - new Date(a.date));
+  missingSetupItems = getMissingSetupItems({ capsuleToken, capsuleWebBaseUrl });
+  posts = sortedPosts;
   populateHistoryFilters(posts);
   populateTaskOwnerFilter();
   updateTaskSummaryUI();
   renderRuntimeStatus();
   renderPosts(currentTab);
+  renderSetupModal();
+  })().finally(() => {
+    loadPostsPromise = null;
+  });
+
+  return loadPostsPromise;
 }
 
 async function updateThread(guids, changes) {
@@ -1287,6 +1401,12 @@ function setRefreshState(isRefreshing) {
 }
 
 async function refreshPosts() {
+  if (missingSetupItems.length) {
+    renderSetupModal();
+    showActionStatus("Complete setup in Settings before refreshing.", true);
+    return;
+  }
+
   setRefreshState(true);
 
   try {
@@ -1301,6 +1421,12 @@ async function refreshPosts() {
 }
 
 async function generateDigest() {
+  if (missingSetupItems.length) {
+    renderSetupModal();
+    showActionStatus("Complete setup in Settings before generating digests.", true);
+    return;
+  }
+
   const button = document.getElementById("generateDigestBtn");
   button.disabled = true;
 
@@ -1340,6 +1466,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.getElementById("searchInput").addEventListener("input", () => renderPosts(currentTab));
   document.getElementById("settingsBtn").addEventListener("click", () => chrome.runtime.openOptionsPage());
+  document.getElementById("openSettingsBtn").addEventListener("click", () => chrome.runtime.openOptionsPage());
+  document.getElementById("retrySetupBtn").addEventListener("click", loadPosts);
   document.getElementById("themeToggle").addEventListener("click", toggleTheme);
   document.getElementById("refreshBtn").addEventListener("click", refreshPosts);
   document.getElementById("markAllReadBtn").addEventListener("click", markAllRead);
@@ -1399,27 +1527,19 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
     return;
   }
 
-  if (changes.rssItems) {
-    await loadPosts();
-  }
-
-  if (changes.showMediumInFeed || changes.hideLowPriorityInFeed || changes.alwaysShowReplyNeeded) {
-    await loadPosts();
-  }
-
-  if (changes.emailClient || changes.calendarShortcutMode) {
-    await loadPosts();
-  }
-
-  if (changes.capsuleTasks) {
-    await loadPosts();
-  }
-
-  if (changes.digests) {
-    await loadPosts();
-  }
-
-  if (changes.runtimeStatus) {
+  if (
+    changes.rssItems ||
+    changes.showMediumInFeed ||
+    changes.hideLowPriorityInFeed ||
+    changes.alwaysShowReplyNeeded ||
+    changes.emailClient ||
+    changes.calendarShortcutMode ||
+    changes.capsuleTasks ||
+    changes.digests ||
+    changes.runtimeStatus ||
+    changes.capsuleToken ||
+    changes.capsuleWebBaseUrl
+  ) {
     await loadPosts();
   }
 

@@ -6,7 +6,6 @@ const MAX_DRAFT_CACHE_ITEMS = 150;
 const MAX_DIGEST_ITEMS = 60;
 const GROUPED_NOTIFICATION_ID = "crm-activity-group";
 const DIGEST_ALARM_NAME = "digestCheck";
-const CAPSULE_WEB_BASE_URL = "https://msi-products.capsulecrm.com";
 const CAPSULE_ENTRIES_URL = "https://api.capsulecrm.com/api/v2/entries";
 const AI_MODEL = "gpt-4o-mini";
 const HEURISTIC_MODEL = "local-heuristic";
@@ -24,6 +23,7 @@ const PRIORITY_RANK = {
 
 let seenGuids = new Set();
 let refreshInFlight = null;
+let configuredCapsuleWebBaseUrl = "";
 const digestGenerationLocks = new Map();
 const taskCreationLocks = new Map();
 
@@ -36,6 +36,39 @@ async function setRuntimeStatus(status = {}) {
   };
   await chrome.storage.local.set({ runtimeStatus: nextStatus });
   return nextStatus;
+}
+
+function getMissingRequiredSettings(settings = {}) {
+  const missing = [];
+
+  if (!String(settings.capsuleToken || "").trim()) {
+    missing.push("Capsule API Token");
+  }
+
+  if (!String(settings.capsuleWebBaseUrl || "").trim()) {
+    missing.push("Capsule Web App URL");
+  }
+
+  return missing;
+}
+
+async function ensureRequiredSettings(settings, source = "runtime") {
+  const missing = getMissingRequiredSettings(settings);
+  if (!missing.length) {
+    return { ok: true };
+  }
+
+  const message = `Complete setup in Settings before continuing: ${missing.join(", ")}.`;
+  await setRuntimeStatus({
+    level: "warn",
+    source,
+    message
+  });
+  return {
+    ok: false,
+    error: message,
+    missing
+  };
 }
 
 function runLocked(lockMap, key, task) {
@@ -161,7 +194,35 @@ async function openOrUpdateTab(url) {
   await chrome.storage.local.set({ lastTabId: newTab.id });
 }
 
-async function fetchCapsuleEntries(token) {
+function normalizeCapsuleWebBaseUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const withProtocol = /^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+
+  try {
+    const url = new URL(withProtocol);
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+  } catch (error) {
+    return "";
+  }
+}
+
+function buildCapsuleWebUrl(baseUrl, path = "/") {
+  const normalizedBaseUrl = normalizeCapsuleWebBaseUrl(baseUrl);
+  if (!normalizedBaseUrl) {
+    return "";
+  }
+
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${normalizedBaseUrl}${normalizedPath}`;
+}
+
+async function fetchCapsuleEntries(token, capsuleWebBaseUrl) {
   if (!token) {
     throw new Error("Capsule API token is missing");
   }
@@ -190,7 +251,9 @@ async function fetchCapsuleEntries(token) {
         .filter(Boolean)
     )];
     const partyId = relatedParties[0]?.id || null;
-    const link = partyId ? `${CAPSULE_WEB_BASE_URL}/party/${partyId}` : `${CAPSULE_WEB_BASE_URL}/`;
+    const link = partyId
+      ? buildCapsuleWebUrl(capsuleWebBaseUrl, `/party/${partyId}`)
+      : buildCapsuleWebUrl(capsuleWebBaseUrl, "/");
     const body = entry.content || "";
     const snippet = body.split("\n")[0].slice(0, 100);
     const title = entry.subject?.trim() || `${entry.creator?.name || "Someone"} Task`;
@@ -711,7 +774,7 @@ function normalizeCapsuleTask(task = {}) {
   return {
     id: `capsule_${task.id}`,
     capsuleTaskId: task.id ? String(task.id) : "",
-    taskUrl: task.id ? `${CAPSULE_WEB_BASE_URL}/tasks/${task.id}` : "",
+    taskUrl: task.id ? buildCapsuleWebUrl(configuredCapsuleWebBaseUrl, `/tasks/${task.id}`) : "",
     title: task.description || "",
     notes: stripTaskMetadata(task.detail || ""),
     status: normalizedStatus,
@@ -744,6 +807,12 @@ async function fetchCapsuleTasks() {
 }
 
 async function refreshCapsuleTasks() {
+  const settings = await getSettings();
+  const requirements = await ensureRequiredSettings(settings, "tasks");
+  if (!requirements.ok) {
+    throw new Error(requirements.error);
+  }
+
   const tasks = await fetchCapsuleTasks();
   await chrome.storage.local.set({ capsuleTasks: tasks });
   return tasks;
@@ -1521,6 +1590,7 @@ async function getSettings() {
     "enableSummaries",
     "enableDock",
     "capsuleToken",
+    "capsuleWebBaseUrl",
     "emailClient",
     "notifyPriorityThreshold",
     "showMediumInFeed",
@@ -1533,6 +1603,8 @@ async function getSettings() {
     "endOfDayDigestHour"
   ]);
 
+  configuredCapsuleWebBaseUrl = normalizeCapsuleWebBaseUrl(data.capsuleWebBaseUrl);
+
   return {
     interval: data.interval || DEFAULT_INTERVAL,
     notificationsEnabled: data.notificationsEnabled !== false,
@@ -1541,6 +1613,7 @@ async function getSettings() {
     enableSummaries: data.enableSummaries === true,
     enableDock: data.enableDock === true,
     capsuleToken: data.capsuleToken || "",
+    capsuleWebBaseUrl: configuredCapsuleWebBaseUrl,
     emailClient: data.emailClient || "default",
     notifyPriorityThreshold: PRIORITY_LEVELS.includes(data.notifyPriorityThreshold) ? data.notifyPriorityThreshold : "high",
     showMediumInFeed: data.showMediumInFeed !== false,
@@ -1589,11 +1662,12 @@ async function handleRefresh(options = {}) {
       return { ok: true, newCount: 0, skipped: "snoozed" };
     }
 
-    if (!settings.capsuleToken) {
-      return { ok: false, error: "Set a Capsule API token in Settings before refreshing." };
+    const requirements = await ensureRequiredSettings(settings, "refresh");
+    if (!requirements.ok) {
+      return { ok: false, error: requirements.error, missing: requirements.missing };
     }
 
-    const entries = await fetchCapsuleEntries(settings.capsuleToken);
+    const entries = await fetchCapsuleEntries(settings.capsuleToken, settings.capsuleWebBaseUrl);
     const newItems = entries.filter(item => !seenGuids.has(item.guid));
     newItems.forEach(item => seenGuids.add(item.guid));
 
@@ -1773,7 +1847,12 @@ chrome.notifications.onClicked.addListener(async notificationId => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === "openEntry" && msg.url) {
+  if (msg.type === "openEntry") {
+    if (!msg.url) {
+      sendResponse({ ok: false, error: "No Capsule link is available for this item." });
+      return true;
+    }
+
     openOrUpdateTab(msg.url)
       .then(() => sendResponse({ ok: true }))
       .catch(error => sendResponse({ ok: false, error: error.message || "Unable to open item." }));
@@ -1788,10 +1867,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "settingsUpdated") {
     getSettings()
       .then(async settings => {
+        const requirements = await ensureRequiredSettings(settings, "settings");
         await applyDockSetting();
         await scheduleAlarm(settings.interval);
         await scheduleDigestAlarm();
-        if (settings.capsuleToken) {
+        if (requirements.ok) {
           try {
             await refreshCapsuleTasks();
           } catch (error) {
@@ -1799,7 +1879,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
         }
         await generateScheduledDigestsIfDue();
-        return { ok: true };
+        return requirements.ok ? { ok: true } : requirements;
       })
       .then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error.message || "Unable to apply settings." }));
@@ -1872,11 +1952,14 @@ chrome.runtime.onInstalled.addListener(async () => {
   await applyDockSetting();
   await scheduleAlarm(settings.interval || DEFAULT_INTERVAL);
   await scheduleDigestAlarm();
-  await handleRefresh({ reason: "install", notificationsEnabled: false, soundEnabled: false });
-  try {
-    await refreshCapsuleTasks();
-  } catch (error) {
-    console.warn("[WARN] Capsule task refresh failed on install", error);
+  const requirements = await ensureRequiredSettings(settings, "install");
+  if (requirements.ok) {
+    await handleRefresh({ reason: "install", notificationsEnabled: false, soundEnabled: false });
+    try {
+      await refreshCapsuleTasks();
+    } catch (error) {
+      console.warn("[WARN] Capsule task refresh failed on install", error);
+    }
   }
   await generateScheduledDigestsIfDue();
 });
@@ -1888,11 +1971,14 @@ chrome.runtime.onStartup.addListener(async () => {
   await scheduleAlarm(settings.interval);
   await scheduleDigestAlarm();
   await updateBadgeFromStorage();
-  await handleRefresh({ reason: "startup", notificationsEnabled: false, soundEnabled: false });
-  try {
-    await refreshCapsuleTasks();
-  } catch (error) {
-    console.warn("[WARN] Capsule task refresh failed on startup", error);
+  const requirements = await ensureRequiredSettings(settings, "startup");
+  if (requirements.ok) {
+    await handleRefresh({ reason: "startup", notificationsEnabled: false, soundEnabled: false });
+    try {
+      await refreshCapsuleTasks();
+    } catch (error) {
+      console.warn("[WARN] Capsule task refresh failed on startup", error);
+    }
   }
   await generateScheduledDigestsIfDue();
 });

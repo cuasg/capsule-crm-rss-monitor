@@ -65,8 +65,22 @@
     <section id="feedList">
       <p class="empty">Loading posts...</p>
     </section>
-    <section id="runtimeStatus" class="runtime-status hidden" aria-live="polite"></section>
-    <p id="actionStatus" class="action-status hidden" aria-live="polite"></p>
+    <div class="status-bar" aria-live="polite">
+      <section id="runtimeStatus" class="runtime-status hidden"></section>
+      <p id="actionStatus" class="action-status hidden"></p>
+    </div>
+
+    <div id="setupModal" class="setup-modal hidden" role="dialog" aria-modal="true" aria-labelledby="setupModalTitle">
+      <div class="setup-modal-card">
+        <h2 id="setupModalTitle">Complete Setup</h2>
+        <p id="setupModalMessage">This extension needs your Capsule settings before it can be used.</p>
+        <div id="setupModalMissing" class="setup-modal-missing"></div>
+        <div class="button-row">
+          <button id="openSettingsBtn" class="btn btn-primary" type="button">Open Settings</button>
+          <button id="retrySetupBtn" class="btn" type="button">Check Again</button>
+        </div>
+      </div>
+    </div>
 
     <template id="postTemplate">
       <div class="post">

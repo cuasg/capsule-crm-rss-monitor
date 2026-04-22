@@ -17,9 +17,19 @@
         <input id="capsuleToken" type="password" placeholder="Paste your token here" autocomplete="off" />
       </div>
       <div class="option-row">
+        <label for="capsuleWebBaseUrl">Capsule Web App URL</label>
+        <input
+          id="capsuleWebBaseUrl"
+          type="url"
+          placeholder="https://your-account.capsulecrm.com"
+          autocomplete="off"
+        />
+      </div>
+      <div class="option-row">
         <label for="openaiKey">OpenAI API Key</label>
         <input id="openaiKey" type="password" placeholder="sk-..." autocomplete="off" />
       </div>
+      <p class="option-note">Use your Capsule account URL so party and task links open in the right workspace.</p>
       <p class="option-note">Credentials are stored locally in your Chrome profile so they persist across browser restarts.</p>
     </fieldset>
 

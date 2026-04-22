@@ -1,4 +1,5 @@
 const capsuleTokenInput = document.getElementById("capsuleToken");
+const capsuleWebBaseUrlInput = document.getElementById("capsuleWebBaseUrl");
 const intervalSelect = document.getElementById("intervalSelect");
 const notifyToggle = document.getElementById("notifyToggle");
 const soundToggle = document.getElementById("soundToggle");
@@ -52,6 +53,24 @@ function escapeCsvCell(value) {
   return `"${stringValue.replace(/"/g, '""')}"`;
 }
 
+function normalizeCapsuleWebBaseUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const withProtocol = /^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+
+  try {
+    const url = new URL(withProtocol);
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+  } catch (error) {
+    return null;
+  }
+}
+
 async function loadSettings() {
   const localData = await chrome.storage.local.get([
     "interval",
@@ -61,6 +80,7 @@ async function loadSettings() {
     "enableSummaries",
     "theme",
     "capsuleToken",
+    "capsuleWebBaseUrl",
     "openaiKey",
     "emailClient",
     "notifyPriorityThreshold",
@@ -76,6 +96,7 @@ async function loadSettings() {
 
   applyTheme(localData.theme);
   capsuleTokenInput.value = localData.capsuleToken || "";
+  capsuleWebBaseUrlInput.value = localData.capsuleWebBaseUrl || "";
   keyInput.value = localData.openaiKey || "";
   intervalSelect.value = String(localData.interval || 1);
   notifyToggle.checked = localData.notificationsEnabled !== false;
@@ -97,6 +118,7 @@ async function loadSettings() {
 saveBtn.addEventListener("click", async () => {
   const interval = Number.parseInt(intervalSelect.value, 10);
   const capsuleToken = capsuleTokenInput.value.trim();
+  const capsuleWebBaseUrl = normalizeCapsuleWebBaseUrl(capsuleWebBaseUrlInput.value);
   const openaiKey = keyInput.value.trim();
   const notificationsEnabled = notifyToggle.checked;
   const soundEnabled = soundToggle.checked;
@@ -105,8 +127,16 @@ saveBtn.addEventListener("click", async () => {
   const emailClient = emailClientSelect.value || "default";
   const notifyPriorityThreshold = notifyPriorityThresholdSelect.value || "high";
 
+  if (capsuleWebBaseUrl === null) {
+    showStatus("Capsule Web App URL must be a valid URL.", true);
+    return;
+  }
+
+  capsuleWebBaseUrlInput.value = capsuleWebBaseUrl;
+
   await chrome.storage.local.set({
     capsuleToken,
+    capsuleWebBaseUrl,
     openaiKey,
     interval,
     notificationsEnabled,
@@ -125,7 +155,7 @@ saveBtn.addEventListener("click", async () => {
     endOfDayDigestHour: Number.parseInt(endOfDayDigestHourSelect.value, 10) || 17
   });
 
-  await chrome.storage.local.remove(["feeds"]);
+  await chrome.storage.local.remove(["rssItems", "capsuleTasks", "runtimeStatus"]);
 
   const response = await chrome.runtime.sendMessage({ type: "settingsUpdated" });
   if (!response?.ok) {
@@ -146,6 +176,13 @@ keyInput.addEventListener("input", async () => {
 
 capsuleTokenInput.addEventListener("input", async () => {
   await chrome.storage.local.set({ capsuleToken: capsuleTokenInput.value.trim() });
+});
+
+capsuleWebBaseUrlInput.addEventListener("input", async () => {
+  const capsuleWebBaseUrl = normalizeCapsuleWebBaseUrl(capsuleWebBaseUrlInput.value);
+  if (capsuleWebBaseUrl !== null) {
+    await chrome.storage.local.set({ capsuleWebBaseUrl });
+  }
 });
 
 exportJsonBtn.addEventListener("click", async () => {
